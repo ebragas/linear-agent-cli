@@ -64,24 +64,23 @@ async function refreshToken(
   return updated;
 }
 
-function isRateLimited(err: unknown): number | null {
+function isRateLimited(err: unknown): number | true | false {
   const errObj = err as Record<string, unknown>;
   const extensions = errObj?.extensions as Record<string, unknown> | undefined;
   const type =
     (errObj?.type as string) ?? (extensions?.code as string) ?? "";
   if (type === "RATELIMITED") {
-    // Try to extract reset time from error or response headers
     const reset = extensions?.rateLimit as Record<string, unknown> | undefined;
-    return (reset?.reset as number) ?? null;
+    return (reset?.reset as number) ?? true;
   }
 
   // Check for errors array (GraphQL response)
   const errors = errObj?.errors as Array<Record<string, unknown>> | undefined;
   if (errors?.some((e) => (e.extensions as Record<string, unknown>)?.code === "RATELIMITED")) {
-    return null;
+    return true;
   }
 
-  return null;
+  return false;
 }
 
 function isAuthError(err: unknown): boolean {
@@ -120,10 +119,10 @@ export async function withRetry<T>(
     return await fn();
   } catch (err) {
     // Rate limit: wait and retry once
-    if (isRateLimited(err)) {
-      const resetAt = isRateLimited(err);
-      if (resetAt) {
-        const waitMs = Math.max(0, resetAt - Date.now());
+    const rateLimitResult = isRateLimited(err);
+    if (rateLimitResult) {
+      if (typeof rateLimitResult === "number") {
+        const waitMs = Math.max(0, rateLimitResult - Date.now());
         await sleep(Math.min(waitMs, 60_000)); // Cap at 60s
       } else {
         await sleep(5_000);
