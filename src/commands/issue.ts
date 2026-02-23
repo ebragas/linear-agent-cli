@@ -323,7 +323,6 @@ export function registerIssueCommands(program: Command): void {
 
         // Resolve team
         const teamId = await resolveTeam(client, opts.team);
-        const team = await client.team(teamId);
 
         const input: Record<string, unknown> = {
           title: opts.title,
@@ -357,6 +356,7 @@ export function registerIssueCommands(program: Command): void {
 
         // State
         if (opts.state) {
+          const team = await client.team(teamId);
           input.stateId = await resolveState(
             opts.state,
             team.key,
