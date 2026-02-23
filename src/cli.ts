@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { registerAuthCommands } from "./commands/auth.js";
+import { registerIssueCommands } from "./commands/issue.js";
 import { CLIError } from "./errors.js";
 
 const pkg = JSON.parse(
@@ -27,9 +28,7 @@ program
 
 // Register command groups
 registerAuthCommands(program);
-
-// Placeholder subcommands (to be implemented in subsequent tasks)
-program.command("issue").description("Create, read, update, and search issues");
+registerIssueCommands(program);
 program.command("comment").description("Add and list comments on issues");
 program.command("inbox").description("View and manage inbox notifications");
 program.command("delegate").description("Assign and delegate issues");
