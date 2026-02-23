@@ -106,7 +106,7 @@ describe.skipIf(!INTEGRATION)("integration: lifecycle", () => {
       )
     );
     expect(createOutput.id).toBeTruthy();
-    createdIssueId = createOutput.identifier ?? createOutput.id;
+    createdIssueId = createOutput.id;
 
     // Get
     const getOutput = JSON.parse(run(`issue get ${createdIssueId}`));

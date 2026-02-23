@@ -54,6 +54,6 @@ program.parseAsync(process.argv).catch((err) => {
     if (err.resolution) console.error(err.resolution);
     process.exit(err.exitCode);
   }
-  console.error(`Error: ${err.message ?? err}`);
+  console.error(`Error: ${err?.message ?? String(err)}`);
   process.exit(1);
 });

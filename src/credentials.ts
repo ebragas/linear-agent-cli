@@ -71,7 +71,7 @@ export function writeCredentials(
   credentialsDir: string,
   data: Credentials
 ): void {
-  mkdirSync(credentialsDir, { recursive: true });
+  mkdirSync(credentialsDir, { recursive: true, mode: 0o700 });
   const path = credentialsPath(agentId, credentialsDir);
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n", {
     mode: 0o600,
