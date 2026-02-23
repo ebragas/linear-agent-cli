@@ -2,7 +2,6 @@
   "name": "@ebragas/linear-cli",
   "version": "0.1.0",
   "description": "CLI tool for AI agents to interact with Linear using per-agent OAuth identity",
-  "main": "./dist/cli.js",
   "bin": {
     "linear": "./dist/cli.js"
   },
