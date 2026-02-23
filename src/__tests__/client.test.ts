@@ -63,17 +63,13 @@ describe("client", () => {
   });
 
   describe("withRetry", () => {
-    const getClient = (creds: Credentials) =>
-      new LinearClient({ accessToken: creds.accessToken });
-
     it("returns result on success", async () => {
       const fn = vi.fn().mockResolvedValue("success");
       const result = await withRetry(
         fn,
         testCredentials,
         "test-agent",
-        testDir,
-        getClient
+        testDir
       );
       expect(result).toBe("success");
       expect(fn).toHaveBeenCalledTimes(1);
@@ -90,8 +86,7 @@ describe("client", () => {
           fn,
           testCredentials,
           "test-agent",
-          testDir,
-          getClient
+          testDir
         );
         expect(result).toBe("success after retry");
         expect(fn).toHaveBeenCalledTimes(2);
@@ -104,7 +99,7 @@ describe("client", () => {
           .mockRejectedValueOnce(new Error("still limited"));
 
         await expect(
-          withRetry(fn, testCredentials, "test-agent", testDir, getClient)
+          withRetry(fn, testCredentials, "test-agent", testDir)
         ).rejects.toThrow(RateLimitError);
         expect(fn).toHaveBeenCalledTimes(2);
       });
@@ -121,15 +116,14 @@ describe("client", () => {
           fn,
           testCredentials,
           "test-agent",
-          testDir,
-          getClient
+          testDir
         );
         expect(result).toBe("recovered");
       });
     });
 
     describe("auth error handling", () => {
-      it("attempts token refresh on AUTHENTICATION_ERROR", async () => {
+      it("retries with new client after token refresh", async () => {
         mockFetch.mockResolvedValueOnce({
           ok: true,
           json: async () => ({
@@ -141,12 +135,17 @@ describe("client", () => {
 
         const fn = vi
           .fn()
-          .mockRejectedValue({ type: "AUTHENTICATION_ERROR" });
+          .mockRejectedValueOnce({ type: "AUTHENTICATION_ERROR" })
+          .mockResolvedValueOnce("retried with new token");
 
-        // After refresh, withRetry throws AuthenticationError with "Token refreshed"
-        await expect(
-          withRetry(fn, testCredentials, "test-agent", testDir, getClient)
-        ).rejects.toThrow(AuthenticationError);
+        const result = await withRetry(
+          fn,
+          testCredentials,
+          "test-agent",
+          testDir
+        );
+        expect(result).toBe("retried with new token");
+        expect(fn).toHaveBeenCalledTimes(2);
 
         // Verify token refresh was attempted
         expect(mockFetch).toHaveBeenCalledWith(
@@ -155,22 +154,31 @@ describe("client", () => {
         );
       });
 
-      it("detects AUTHENTICATION_ERROR in message", async () => {
+      it("detects AUTHENTICATION_ERROR in message and retries", async () => {
         mockFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 401,
-          statusText: "Unauthorized",
+          ok: true,
+          json: async () => ({
+            access_token: "new-token",
+            token_type: "Bearer",
+            expires_in: 2592000,
+          }),
         });
 
         const fn = vi
           .fn()
-          .mockRejectedValue(
+          .mockRejectedValueOnce(
             new Error("AUTHENTICATION_ERROR: invalid token")
-          );
+          )
+          .mockResolvedValueOnce("retried after auth error in message");
 
-        await expect(
-          withRetry(fn, testCredentials, "test-agent", testDir, getClient)
-        ).rejects.toThrow(AuthenticationError);
+        const result = await withRetry(
+          fn,
+          testCredentials,
+          "test-agent",
+          testDir
+        );
+        expect(result).toBe("retried after auth error in message");
+        expect(fn).toHaveBeenCalledTimes(2);
       });
 
       it("throws AuthenticationError when refresh fails", async () => {
@@ -185,7 +193,7 @@ describe("client", () => {
           .mockRejectedValue({ type: "AUTHENTICATION_ERROR" });
 
         await expect(
-          withRetry(fn, testCredentials, "test-agent", testDir, getClient)
+          withRetry(fn, testCredentials, "test-agent", testDir)
         ).rejects.toThrow(AuthenticationError);
       });
     });
@@ -201,8 +209,7 @@ describe("client", () => {
           fn,
           testCredentials,
           "test-agent",
-          testDir,
-          getClient
+          testDir
         );
         expect(result).toBe("recovered");
         expect(fn).toHaveBeenCalledTimes(2);
@@ -215,7 +222,7 @@ describe("client", () => {
           .mockRejectedValueOnce(new Error("ECONNREFUSED again"));
 
         await expect(
-          withRetry(fn, testCredentials, "test-agent", testDir, getClient)
+          withRetry(fn, testCredentials, "test-agent", testDir)
         ).rejects.toThrow(NetworkError);
         expect(fn).toHaveBeenCalledTimes(2);
       });
@@ -230,8 +237,7 @@ describe("client", () => {
           fn,
           testCredentials,
           "test-agent",
-          testDir,
-          getClient
+          testDir
         );
         expect(result).toBe("ok");
       });
@@ -246,8 +252,7 @@ describe("client", () => {
           fn,
           testCredentials,
           "test-agent",
-          testDir,
-          getClient
+          testDir
         );
         expect(result).toBe("ok");
       });
@@ -259,7 +264,7 @@ describe("client", () => {
         .mockRejectedValue(new Error("Something unexpected"));
 
       await expect(
-        withRetry(fn, testCredentials, "test-agent", testDir, getClient)
+        withRetry(fn, testCredentials, "test-agent", testDir)
       ).rejects.toThrow();
       expect(fn).toHaveBeenCalledTimes(1);
     });

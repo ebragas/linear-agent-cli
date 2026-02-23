@@ -8,8 +8,6 @@ import {
   classifyError,
 } from "./errors.js";
 
-export type ClientFactory = () => Promise<LinearClient>;
-
 interface TokenResponse {
   access_token: string;
   token_type: string;
@@ -109,14 +107,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function withRetry<T>(
-  fn: () => Promise<T>,
+  fn: (client: LinearClient) => Promise<T>,
   credentials: Credentials,
   agentId: string,
   credentialsDir: string,
-  getClient: (creds: Credentials) => LinearClient
 ): Promise<T> {
+  const client = createClient(credentials);
   try {
-    return await fn();
+    return await fn(client);
   } catch (err) {
     // Rate limit: wait and retry once
     const rateLimitResult = isRateLimited(err);
@@ -128,13 +126,13 @@ export async function withRetry<T>(
         await sleep(5_000);
       }
       try {
-        return await fn();
+        return await fn(client);
       } catch {
         throw new RateLimitError("Rate limited after retry");
       }
     }
 
-    // Auth error: refresh token and retry once
+    // Auth error: refresh token and retry once with new client
     if (isAuthError(err)) {
       try {
         const updated = await refreshToken(
@@ -142,13 +140,8 @@ export async function withRetry<T>(
           agentId,
           credentialsDir
         );
-        // Create new fn with refreshed client — caller should rebuild
-        const newClient = getClient(updated);
-        // We can't easily re-run fn with the new client from here,
-        // so we throw a specific error that the caller can catch
-        throw new AuthenticationError(
-          "Token refreshed. Please retry the operation."
-        );
+        const newClient = createClient(updated);
+        return await fn(newClient);
       } catch (refreshErr) {
         if (refreshErr instanceof AuthenticationError) throw refreshErr;
         throw new AuthenticationError(
@@ -161,7 +154,7 @@ export async function withRetry<T>(
     if (isNetworkError(err)) {
       await sleep(2_000);
       try {
-        return await fn();
+        return await fn(client);
       } catch {
         throw new NetworkError(
           "Network error after retry. Check connectivity."
@@ -175,15 +168,4 @@ export async function withRetry<T>(
 
 export function createClient(credentials: Credentials): LinearClient {
   return new LinearClient({ accessToken: credentials.accessToken });
-}
-
-export function makeClientFactory(
-  agentId: string,
-  credentialsDir: string,
-  readCreds: () => Credentials
-): ClientFactory {
-  return async () => {
-    const creds = readCreds();
-    return createClient(creds);
-  };
 }

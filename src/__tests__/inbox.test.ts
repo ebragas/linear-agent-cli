@@ -7,12 +7,12 @@ import type { Credentials } from "../credentials.js";
 
 // Mock LinearClient
 const mockNotifications = vi.fn();
-const mockNotificationArchive = vi.fn();
+const mockArchiveNotification = vi.fn();
 
 vi.mock("@linear/sdk", () => ({
   LinearClient: vi.fn().mockImplementation(() => ({
     notifications: mockNotifications,
-    notificationArchive: mockNotificationArchive,
+    archiveNotification: mockArchiveNotification,
   })),
 }));
 
@@ -36,7 +36,7 @@ describe("inbox commands", () => {
     mkdirSync(testDir, { recursive: true });
     writeCredentials("test-bot", testDir, validCredentials);
     mockNotifications.mockReset();
-    mockNotificationArchive.mockReset();
+    mockArchiveNotification.mockReset();
   });
 
   afterEach(() => {
@@ -167,7 +167,7 @@ describe("inbox commands", () => {
       );
       const { Command } = await import("commander");
 
-      mockNotificationArchive.mockResolvedValueOnce({ success: true });
+      mockArchiveNotification.mockResolvedValueOnce({ success: true });
 
       const program = new Command();
       program
@@ -198,7 +198,7 @@ describe("inbox commands", () => {
         console.log = origLog;
       }
 
-      expect(mockNotificationArchive).toHaveBeenCalledWith("notif-123");
+      expect(mockArchiveNotification).toHaveBeenCalledWith("notif-123");
       const output = JSON.parse(logs[0]);
       expect(output.status).toBe("dismissed");
       expect(output.id).toBe("notif-123");
@@ -220,7 +220,7 @@ describe("inbox commands", () => {
         ],
       });
 
-      mockNotificationArchive
+      mockArchiveNotification
         .mockResolvedValueOnce({ success: true })
         .mockResolvedValueOnce({ success: true })
         .mockResolvedValueOnce({ success: true });
@@ -254,10 +254,10 @@ describe("inbox commands", () => {
       }
 
       expect(mockNotifications).toHaveBeenCalledWith();
-      expect(mockNotificationArchive).toHaveBeenCalledTimes(3);
-      expect(mockNotificationArchive).toHaveBeenCalledWith("notif-a");
-      expect(mockNotificationArchive).toHaveBeenCalledWith("notif-b");
-      expect(mockNotificationArchive).toHaveBeenCalledWith("notif-c");
+      expect(mockArchiveNotification).toHaveBeenCalledTimes(3);
+      expect(mockArchiveNotification).toHaveBeenCalledWith("notif-a");
+      expect(mockArchiveNotification).toHaveBeenCalledWith("notif-b");
+      expect(mockArchiveNotification).toHaveBeenCalledWith("notif-c");
 
       const output = JSON.parse(logs[0]);
       expect(output.status).toBe("dismissed-all");

@@ -645,6 +645,7 @@ describe("issue commands", () => {
       const { Command } = await import("commander");
 
       mockSearchIssues.mockResolvedValue({ nodes: [] });
+      mockTeams.mockResolvedValue({ nodes: [] });
 
       const program = new Command();
       program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");

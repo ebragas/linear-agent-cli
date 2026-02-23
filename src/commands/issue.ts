@@ -1,15 +1,10 @@
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { LinearClient } from "@linear/sdk";
-import {
-  readCredentials,
-  getCredentialsDir,
-} from "../credentials.js";
-import type { Credentials } from "../credentials.js";
-import { createClient } from "../client.js";
 import { resolveUser, resolveState, parseTeamKey } from "../resolvers.js";
 import { getFormat, printResult } from "../output.js";
 import { PartialSuccessError, ValidationError } from "../errors.js";
+import { runWithClient } from "../context.js";
 
 function parseDate(value: string): string {
   // Support ISO-8601 durations like -P7D (7 days ago)
@@ -21,30 +16,6 @@ function parseDate(value: string): string {
   }
   // Assume ISO-8601 date string
   return new Date(value).toISOString();
-}
-
-function requireAgent(globalOpts: Record<string, unknown>): string {
-  const agent = globalOpts.agent as string | undefined;
-  if (!agent) {
-    console.error(
-      "Error: --agent is required (or set LINEAR_AGENT_ID env var)"
-    );
-    process.exit(4);
-  }
-  return agent;
-}
-
-function getClientAndCredentials(globalOpts: Record<string, unknown>): {
-  client: LinearClient;
-  credentials: Credentials;
-  agent: string;
-  credentialsDir: string;
-} {
-  const agent = requireAgent(globalOpts);
-  const credentialsDir = getCredentialsDir(globalOpts);
-  const credentials = readCredentials(agent, credentialsDir);
-  const client = createClient(credentials);
-  return { client, credentials, agent, credentialsDir };
 }
 
 type RelationType = "blocks" | "related";
@@ -122,6 +93,53 @@ function collectArray(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
 
+async function resolveLabels(
+  client: LinearClient,
+  labels: string[]
+): Promise<string[]> {
+  const labelIds: string[] = [];
+  for (const l of labels) {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(l)) {
+      labelIds.push(l);
+      continue;
+    }
+    const result = await client.issueLabels({
+      filter: { name: { eqIgnoreCase: l } },
+    });
+    if (!result.nodes[0]) {
+      throw new ValidationError(`No label matching "${l}"`);
+    }
+    labelIds.push(result.nodes[0].id);
+  }
+  return labelIds;
+}
+
+async function resolveProject(
+  client: LinearClient,
+  project: string
+): Promise<string> {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project)) {
+    return project;
+  }
+  const projects = await client.projects({
+    filter: { name: { eqIgnoreCase: project } },
+  });
+  return projects.nodes[0]?.id ?? project;
+}
+
+async function resolveTeam(
+  client: LinearClient,
+  team: string
+): Promise<string> {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team)) {
+    return team;
+  }
+  const teams = await client.teams({
+    filter: { name: { eqIgnoreCase: team } },
+  });
+  return teams.nodes[0]?.id ?? team;
+}
+
 export function registerIssueCommands(program: Command): void {
   const issue = program
     .command("issue")
@@ -145,69 +163,73 @@ export function registerIssueCommands(program: Command): void {
     .option("--include-archived", "Include archived issues")
     .action(async (opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client, credentials } = getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client, { credentials }) => {
+        const format = getFormat(globalOpts.format);
 
-      const filter: Record<string, unknown> = {};
+        const filter: Record<string, unknown> = {};
 
-      if (opts.assignee) {
-        const userId = await resolveUser(opts.assignee, credentials, client);
-        filter.assignee = { id: { eq: userId } };
-      }
-      if (opts.delegate) {
-        const userId = await resolveUser(opts.delegate, credentials, client);
-        filter.delegate = { id: { eq: userId } };
-      }
-      if (opts.state) {
-        filter.state = { name: { eqIgnoreCase: opts.state } };
-      }
-      if (opts.label) {
-        filter.labels = { name: { eqIgnoreCase: opts.label } };
-      }
-      if (opts.team) {
-        filter.team = { name: { eqIgnoreCase: opts.team } };
-      }
-      if (opts.project) {
-        filter.project = { name: { eqIgnoreCase: opts.project } };
-      }
-      if (opts.priority) {
-        filter.priority = { eq: parseInt(opts.priority, 10) };
-      }
-      if (opts.createdAfter) {
-        filter.createdAt = { gte: parseDate(opts.createdAfter) };
-      }
-      if (opts.updatedAfter) {
-        filter.updatedAt = { gte: parseDate(opts.updatedAfter) };
-      }
+        if (opts.assignee) {
+          const userId = await resolveUser(opts.assignee, credentials, client);
+          filter.assignee = { id: { eq: userId } };
+        }
+        if (opts.delegate) {
+          const userId = await resolveUser(opts.delegate, credentials, client);
+          filter.delegate = { id: { eq: userId } };
+        }
+        if (opts.state) {
+          filter.state = { name: { eqIgnoreCase: opts.state } };
+        }
+        if (opts.label) {
+          filter.labels = { name: { eqIgnoreCase: opts.label } };
+        }
+        if (opts.team) {
+          filter.team = { name: { eqIgnoreCase: opts.team } };
+        }
+        if (opts.project) {
+          filter.project = { name: { eqIgnoreCase: opts.project } };
+        }
+        if (opts.priority) {
+          filter.priority = { eq: parseInt(opts.priority, 10) };
+        }
+        if (opts.createdAfter) {
+          filter.createdAt = { gte: parseDate(opts.createdAfter) };
+        }
+        if (opts.updatedAfter) {
+          filter.updatedAt = { gte: parseDate(opts.updatedAfter) };
+        }
 
-      const limit = Math.min(parseInt(opts.limit, 10) || 50, 250);
+        const limit = Math.min(parseInt(opts.limit, 10) || 50, 250);
 
-      const queryOpts: Record<string, unknown> = {
-        filter,
-        first: limit,
-        includeArchived: opts.includeArchived ?? false,
-      };
+        const queryOpts: Record<string, unknown> = {
+          filter,
+          first: limit,
+          includeArchived: opts.includeArchived ?? false,
+        };
 
-      if (opts.query) {
-        // The issues() connection supports a filter-based approach;
-        // for title/description text search use the `or` filter on title and description
-        filter.or = [
-          { title: { containsIgnoreCase: opts.query } },
-          { description: { containsIgnoreCase: opts.query } },
-        ];
-      }
+        if (opts.query) {
+          filter.or = [
+            { title: { containsIgnoreCase: opts.query } },
+            { description: { containsIgnoreCase: opts.query } },
+          ];
+        }
 
-      const issues = await client.issues(queryOpts);
+        const issues = await client.issues(queryOpts);
 
-      const results = issues.nodes.map((i) => ({
-        id: i.identifier,
-        title: i.title,
-        state: i.state?.then ? "[pending]" : (i as Record<string, unknown>).stateName ?? null,
-        priority: i.priority,
-        url: i.url,
-      }));
+        const results = await Promise.all(
+          issues.nodes.map(async (i) => {
+            const state = await i.state;
+            return {
+              id: i.identifier,
+              title: i.title,
+              state: state?.name ?? null,
+              priority: i.priority,
+              url: i.url,
+            };
+          })
+        );
 
-      printResult({ data: results }, format);
+        printResult({ data: results }, format);
+      });
     });
 
   // issue get
@@ -217,54 +239,55 @@ export function registerIssueCommands(program: Command): void {
     .argument("<id>", "Issue identifier (e.g., MAIN-42)")
     .action(async (id, _opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client } = getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
 
-      const issueObj = await client.issue(id);
+        const issueObj = await client.issue(id);
 
-      const [state, assignee, delegate, labels, parent, children, comments, relations] =
-        await Promise.all([
-          issueObj.state,
-          issueObj.assignee,
-          issueObj.delegate,
-          issueObj.labels(),
-          issueObj.parent,
-          issueObj.children(),
-          issueObj.comments(),
-          issueObj.relations(),
-        ]);
+        const [state, assignee, delegate, labels, parent, children, comments, relations] =
+          await Promise.all([
+            issueObj.state,
+            issueObj.assignee,
+            issueObj.delegate,
+            issueObj.labels(),
+            issueObj.parent,
+            issueObj.children(),
+            issueObj.comments(),
+            issueObj.relations(),
+          ]);
 
-      const result = {
-        id: issueObj.identifier,
-        title: issueObj.title,
-        description: issueObj.description ?? null,
-        state: state?.name ?? null,
-        stateType: state?.type ?? null,
-        assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
-        delegate: delegate ? { id: delegate.id, name: delegate.name } : null,
-        labels: labels.nodes.map((l) => ({ id: l.id, name: l.name })),
-        priority: issueObj.priority,
-        priorityLabel: issueObj.priorityLabel,
-        parent: parent ? { id: parent.identifier, title: parent.title } : null,
-        children: children.nodes.map((c) => ({
-          id: c.identifier,
-          title: c.title,
-        })),
-        relations: relations.nodes.map((r) => ({
-          type: r.type,
-          relatedIssueId: (r as Record<string, unknown>).relatedIssueId ?? null,
-        })),
-        comments: comments.nodes.map((c) => ({
-          id: c.id,
-          body: c.body,
-          createdAt: c.createdAt,
-        })),
-        dueDate: issueObj.dueDate ?? null,
-        estimate: issueObj.estimate ?? null,
-        url: issueObj.url,
-      };
+        const result = {
+          id: issueObj.identifier,
+          title: issueObj.title,
+          description: issueObj.description ?? null,
+          state: state?.name ?? null,
+          stateType: state?.type ?? null,
+          assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
+          delegate: delegate ? { id: delegate.id, name: delegate.name } : null,
+          labels: labels.nodes.map((l) => ({ id: l.id, name: l.name })),
+          priority: issueObj.priority,
+          priorityLabel: issueObj.priorityLabel,
+          parent: parent ? { id: parent.identifier, title: parent.title } : null,
+          children: children.nodes.map((c) => ({
+            id: c.identifier,
+            title: c.title,
+          })),
+          relations: relations.nodes.map((r) => ({
+            type: r.type,
+            relatedIssueId: (r as Record<string, unknown>).relatedIssueId ?? null,
+          })),
+          comments: comments.nodes.map((c) => ({
+            id: c.id,
+            body: c.body,
+            createdAt: c.createdAt,
+          })),
+          dueDate: issueObj.dueDate ?? null,
+          estimate: issueObj.estimate ?? null,
+          url: issueObj.url,
+        };
 
-      printResult({ data: result }, format);
+        printResult({ data: result }, format);
+      });
     });
 
   // issue create
@@ -289,135 +312,134 @@ export function registerIssueCommands(program: Command): void {
     .option("--estimate <n>", "Effort estimate")
     .action(async (opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client, credentials, agent, credentialsDir } =
-        getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client, { credentials, agentId, credentialsDir }) => {
+        const format = getFormat(globalOpts.format);
 
-      // Resolve team
-      const teams = await client.teams({
-        filter: { name: { eqIgnoreCase: opts.team } },
-      });
-      let teamId = teams.nodes[0]?.id;
-      if (!teamId) {
-        // Try as ID directly
-        teamId = opts.team;
-      }
+        // Resolve team
+        const teams = await client.teams({
+          filter: { name: { eqIgnoreCase: opts.team } },
+        });
+        let teamId = teams.nodes[0]?.id;
+        if (!teamId) {
+          teamId = opts.team;
+        }
 
-      const input: Record<string, unknown> = {
-        title: opts.title,
-        teamId,
-      };
+        const input: Record<string, unknown> = {
+          title: opts.title,
+          teamId,
+        };
 
-      // Description
-      if (opts.descriptionFile) {
-        input.description = readFileSync(opts.descriptionFile, "utf-8");
-      } else if (opts.description) {
-        input.description = opts.description;
-      }
+        // Description
+        if (opts.descriptionFile) {
+          input.description = readFileSync(opts.descriptionFile, "utf-8");
+        } else if (opts.description) {
+          input.description = opts.description;
+        }
 
-      // Assignee
-      if (opts.assignee) {
-        input.assigneeId = await resolveUser(
-          opts.assignee,
-          credentials,
-          client
-        );
-      }
+        // Assignee
+        if (opts.assignee) {
+          input.assigneeId = await resolveUser(
+            opts.assignee,
+            credentials,
+            client
+          );
+        }
 
-      // Delegate
-      if (opts.delegate) {
-        input.delegateId = await resolveUser(
-          opts.delegate,
-          credentials,
-          client
-        );
-      }
+        // Delegate
+        if (opts.delegate) {
+          input.delegateId = await resolveUser(
+            opts.delegate,
+            credentials,
+            client
+          );
+        }
 
-      // State
-      if (opts.state) {
-        const teamKey = teams.nodes[0]?.key;
-        if (teamKey) {
-          input.stateId = await resolveState(
-            opts.state,
-            teamKey,
+        // State
+        if (opts.state) {
+          const teamKey = teams.nodes[0]?.key;
+          if (teamKey) {
+            input.stateId = await resolveState(
+              opts.state,
+              teamKey,
+              client,
+              agentId,
+              credentialsDir
+            );
+          }
+        }
+
+        // Labels
+        if (opts.label && opts.label.length > 0) {
+          input.labelIds = await resolveLabels(client, opts.label);
+        }
+
+        // Priority
+        if (opts.priority !== undefined) {
+          input.priority = parseInt(opts.priority, 10);
+        }
+
+        // Project
+        if (opts.project) {
+          input.projectId = await resolveProject(client, opts.project);
+        }
+
+        // Parent
+        if (opts.parent) {
+          input.parentId = opts.parent;
+        }
+
+        // Due date
+        if (opts.dueDate) {
+          input.dueDate = opts.dueDate;
+        }
+
+        // Estimate
+        if (opts.estimate !== undefined) {
+          input.estimate = parseInt(opts.estimate, 10);
+        }
+
+        const payload = await client.createIssue(input);
+        const created = await payload.issue;
+
+        const result: Record<string, unknown> = {
+          id: created?.identifier ?? null,
+          title: created?.title ?? opts.title,
+          url: created?.url ?? null,
+        };
+
+        // Handle relations
+        const blocks: string[] = opts.blocks ?? [];
+        const blockedBy: string[] = opts.blockedBy ?? [];
+        const relatedTo: string[] = opts.relatedTo ?? [];
+        const hasRelations =
+          blocks.length > 0 || blockedBy.length > 0 || relatedTo.length > 0;
+
+        if (hasRelations && created) {
+          const { succeeded, failed, warnings } = await createRelations(
             client,
-            agent,
-            credentialsDir
+            created.id,
+            blocks,
+            blockedBy,
+            relatedTo
           );
-        }
-      }
 
-      // Labels
-      if (opts.label && opts.label.length > 0) {
-        input.labelIds = opts.label; // Assume label names/IDs for now
-      }
+          if (failed.length > 0) {
+            result.relations = { succeeded, failed };
+            printResult({ data: result, warnings }, format);
+            throw new PartialSuccessError(
+              `Issue created but some relations failed`,
+              succeeded,
+              failed
+            );
+          }
 
-      // Priority
-      if (opts.priority !== undefined) {
-        input.priority = parseInt(opts.priority, 10);
-      }
-
-      // Project
-      if (opts.project) {
-        input.projectId = opts.project;
-      }
-
-      // Parent
-      if (opts.parent) {
-        input.parentId = opts.parent;
-      }
-
-      // Due date
-      if (opts.dueDate) {
-        input.dueDate = opts.dueDate;
-      }
-
-      // Estimate
-      if (opts.estimate !== undefined) {
-        input.estimate = parseInt(opts.estimate, 10);
-      }
-
-      const payload = await client.createIssue(input);
-      const created = await payload.issue;
-
-      const result: Record<string, unknown> = {
-        id: created?.identifier ?? null,
-        title: created?.title ?? opts.title,
-        url: created?.url ?? null,
-      };
-
-      // Handle relations
-      const blocks: string[] = opts.blocks ?? [];
-      const blockedBy: string[] = opts.blockedBy ?? [];
-      const relatedTo: string[] = opts.relatedTo ?? [];
-      const hasRelations =
-        blocks.length > 0 || blockedBy.length > 0 || relatedTo.length > 0;
-
-      if (hasRelations && created) {
-        const { succeeded, failed, warnings } = await createRelations(
-          client,
-          created.id,
-          blocks,
-          blockedBy,
-          relatedTo
-        );
-
-        if (failed.length > 0) {
-          result.relations = { succeeded, failed };
-          printResult({ data: result, warnings }, format);
-          throw new PartialSuccessError(
-            `Issue created but some relations failed`,
-            succeeded,
-            failed
-          );
+          if (succeeded.length > 0) {
+            result.relations = { succeeded };
+          }
         }
 
-        if (succeeded.length > 0) {
-          result.relations = { succeeded };
-        }
-      }
-
-      printResult({ data: result }, format);
+        printResult({ data: result }, format);
+      });
     });
 
   // issue update
@@ -442,136 +464,136 @@ export function registerIssueCommands(program: Command): void {
     .option("--estimate <n>", "Effort estimate")
     .action(async (id, opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client, credentials, agent, credentialsDir } =
-        getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client, { credentials, agentId, credentialsDir }) => {
+        const format = getFormat(globalOpts.format);
 
-      const input: Record<string, unknown> = {};
+        const input: Record<string, unknown> = {};
 
-      if (opts.title) {
-        input.title = opts.title;
-      }
-
-      // Description
-      if (opts.descriptionFile) {
-        input.description = readFileSync(opts.descriptionFile, "utf-8");
-      } else if (opts.description) {
-        input.description = opts.description;
-      }
-
-      // Assignee (nullable)
-      if (opts.assignee !== undefined) {
-        if (opts.assignee === "null") {
-          input.assigneeId = null;
-        } else {
-          input.assigneeId = await resolveUser(
-            opts.assignee,
-            credentials,
-            client
-          );
+        if (opts.title) {
+          input.title = opts.title;
         }
-      }
 
-      // Delegate (nullable)
-      if (opts.delegate !== undefined) {
-        if (opts.delegate === "null") {
-          input.delegateId = null;
-        } else {
-          input.delegateId = await resolveUser(
-            opts.delegate,
-            credentials,
-            client
-          );
+        // Description
+        if (opts.descriptionFile) {
+          input.description = readFileSync(opts.descriptionFile, "utf-8");
+        } else if (opts.description) {
+          input.description = opts.description;
         }
-      }
 
-      // State
-      if (opts.state) {
-        const teamKey = parseTeamKey(id);
-        input.stateId = await resolveState(
-          opts.state,
-          teamKey,
-          client,
-          agent,
-          credentialsDir
-        );
-      }
-
-      // Labels
-      if (opts.label && opts.label.length > 0) {
-        input.labelIds = opts.label;
-      }
-
-      // Priority
-      if (opts.priority !== undefined) {
-        input.priority = parseInt(opts.priority, 10);
-      }
-
-      // Project
-      if (opts.project) {
-        input.projectId = opts.project;
-      }
-
-      // Parent (nullable)
-      if (opts.parent !== undefined) {
-        if (opts.parent === "null") {
-          input.parentId = null;
-        } else {
-          input.parentId = opts.parent;
+        // Assignee (nullable)
+        if (opts.assignee !== undefined) {
+          if (opts.assignee === "null") {
+            input.assigneeId = null;
+          } else {
+            input.assigneeId = await resolveUser(
+              opts.assignee,
+              credentials,
+              client
+            );
+          }
         }
-      }
 
-      // Due date
-      if (opts.dueDate) {
-        input.dueDate = opts.dueDate;
-      }
+        // Delegate (nullable)
+        if (opts.delegate !== undefined) {
+          if (opts.delegate === "null") {
+            input.delegateId = null;
+          } else {
+            input.delegateId = await resolveUser(
+              opts.delegate,
+              credentials,
+              client
+            );
+          }
+        }
 
-      // Estimate
-      if (opts.estimate !== undefined) {
-        input.estimate = parseInt(opts.estimate, 10);
-      }
-
-      const payload = await client.updateIssue(id, input);
-      const updated = await payload.issue;
-
-      const result: Record<string, unknown> = {
-        id: updated?.identifier ?? id,
-        title: updated?.title ?? null,
-        url: updated?.url ?? null,
-      };
-
-      // Handle relations
-      const blocks: string[] = opts.blocks ?? [];
-      const blockedBy: string[] = opts.blockedBy ?? [];
-      const relatedTo: string[] = opts.relatedTo ?? [];
-      const hasRelations =
-        blocks.length > 0 || blockedBy.length > 0 || relatedTo.length > 0;
-
-      if (hasRelations && updated) {
-        const { succeeded, failed, warnings } = await createRelations(
-          client,
-          updated.id,
-          blocks,
-          blockedBy,
-          relatedTo
-        );
-
-        if (failed.length > 0) {
-          result.relations = { succeeded, failed };
-          printResult({ data: result, warnings }, format);
-          throw new PartialSuccessError(
-            `Issue updated but some relations failed`,
-            succeeded,
-            failed
+        // State
+        if (opts.state) {
+          const teamKey = parseTeamKey(id);
+          input.stateId = await resolveState(
+            opts.state,
+            teamKey,
+            client,
+            agentId,
+            credentialsDir
           );
         }
 
-        if (succeeded.length > 0) {
-          result.relations = { succeeded };
+        // Labels
+        if (opts.label && opts.label.length > 0) {
+          input.labelIds = await resolveLabels(client, opts.label);
         }
-      }
 
-      printResult({ data: result }, format);
+        // Priority
+        if (opts.priority !== undefined) {
+          input.priority = parseInt(opts.priority, 10);
+        }
+
+        // Project
+        if (opts.project) {
+          input.projectId = await resolveProject(client, opts.project);
+        }
+
+        // Parent (nullable)
+        if (opts.parent !== undefined) {
+          if (opts.parent === "null") {
+            input.parentId = null;
+          } else {
+            input.parentId = opts.parent;
+          }
+        }
+
+        // Due date
+        if (opts.dueDate) {
+          input.dueDate = opts.dueDate;
+        }
+
+        // Estimate
+        if (opts.estimate !== undefined) {
+          input.estimate = parseInt(opts.estimate, 10);
+        }
+
+        const payload = await client.updateIssue(id, input);
+        const updated = await payload.issue;
+
+        const result: Record<string, unknown> = {
+          id: updated?.identifier ?? id,
+          title: updated?.title ?? null,
+          url: updated?.url ?? null,
+        };
+
+        // Handle relations
+        const blocks: string[] = opts.blocks ?? [];
+        const blockedBy: string[] = opts.blockedBy ?? [];
+        const relatedTo: string[] = opts.relatedTo ?? [];
+        const hasRelations =
+          blocks.length > 0 || blockedBy.length > 0 || relatedTo.length > 0;
+
+        if (hasRelations && updated) {
+          const { succeeded, failed, warnings } = await createRelations(
+            client,
+            updated.id,
+            blocks,
+            blockedBy,
+            relatedTo
+          );
+
+          if (failed.length > 0) {
+            result.relations = { succeeded, failed };
+            printResult({ data: result, warnings }, format);
+            throw new PartialSuccessError(
+              `Issue updated but some relations failed`,
+              succeeded,
+              failed
+            );
+          }
+
+          if (succeeded.length > 0) {
+            result.relations = { succeeded };
+          }
+        }
+
+        printResult({ data: result }, format);
+      });
     });
 
   // issue transition
@@ -582,32 +604,32 @@ export function registerIssueCommands(program: Command): void {
     .argument("<state>", "Target workflow state name")
     .action(async (id, state, _opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client, agent, credentialsDir } =
-        getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client, { agentId, credentialsDir }) => {
+        const format = getFormat(globalOpts.format);
 
-      const teamKey = parseTeamKey(id);
-      const stateId = await resolveState(
-        state,
-        teamKey,
-        client,
-        agent,
-        credentialsDir
-      );
+        const teamKey = parseTeamKey(id);
+        const stateId = await resolveState(
+          state,
+          teamKey,
+          client,
+          agentId,
+          credentialsDir
+        );
 
-      const payload = await client.updateIssue(id, { stateId });
-      const updated = await payload.issue;
+        const payload = await client.updateIssue(id, { stateId });
+        const updated = await payload.issue;
 
-      printResult(
-        {
-          data: {
-            id: updated?.identifier ?? id,
-            state,
-            url: updated?.url ?? null,
+        printResult(
+          {
+            data: {
+              id: updated?.identifier ?? id,
+              state,
+              url: updated?.url ?? null,
+            },
           },
-        },
-        format
-      );
+          format
+        );
+      });
     });
 
   // issue search
@@ -620,29 +642,30 @@ export function registerIssueCommands(program: Command): void {
     .option("--include-archived", "Include archived issues in results")
     .action(async (query, opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client } = getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
 
-      const searchOpts: Record<string, unknown> = {};
-      if (opts.team) {
-        searchOpts.teamId = opts.team;
-      }
-      if (opts.includeComments) {
-        searchOpts.includeComments = true;
-      }
-      if (opts.includeArchived) {
-        searchOpts.includeArchived = true;
-      }
+        const searchOpts: Record<string, unknown> = {};
+        if (opts.team) {
+          searchOpts.teamId = await resolveTeam(client, opts.team);
+        }
+        if (opts.includeComments) {
+          searchOpts.includeComments = true;
+        }
+        if (opts.includeArchived) {
+          searchOpts.includeArchived = true;
+        }
 
-      const results = await client.searchIssues(query, searchOpts);
+        const results = await client.searchIssues(query, searchOpts);
 
-      const items = results.nodes.map((i) => ({
-        id: i.identifier,
-        title: i.title,
-        url: i.url,
-      }));
+        const items = results.nodes.map((i) => ({
+          id: i.identifier,
+          title: i.title,
+          url: i.url,
+        }));
 
-      printResult({ data: items }, format);
+        printResult({ data: items }, format);
+      });
     });
 
   // issue archive
@@ -652,20 +675,21 @@ export function registerIssueCommands(program: Command): void {
     .argument("<id>", "Issue identifier")
     .action(async (id, _opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client } = getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
 
-      await client.archiveIssue(id);
+        await client.archiveIssue(id);
 
-      printResult(
-        {
-          data: {
-            id,
-            status: "archived",
+        printResult(
+          {
+            data: {
+              id,
+              status: "archived",
+            },
           },
-        },
-        format
-      );
+          format
+        );
+      });
     });
 
   // issue delete
@@ -675,19 +699,20 @@ export function registerIssueCommands(program: Command): void {
     .argument("<id>", "Issue identifier")
     .action(async (id, _opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const { client } = getClientAndCredentials(globalOpts);
-      const format = getFormat(globalOpts.format);
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
 
-      await client.deleteIssue(id);
+        await client.deleteIssue(id);
 
-      printResult(
-        {
-          data: {
-            id,
-            status: "deleted",
+        printResult(
+          {
+            data: {
+              id,
+              status: "deleted",
+            },
           },
-        },
-        format
-      );
+          format
+        );
+      });
     });
 }

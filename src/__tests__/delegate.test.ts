@@ -96,7 +96,7 @@ describe("delegate commands", () => {
       }
 
       expect(mockUpdateIssue).toHaveBeenCalledWith("MAIN-42", {
-        delegate: { id: "agent-abc" },
+        delegateId: "agent-abc",
       });
 
       const output = JSON.parse(logs[0]);
@@ -131,7 +131,7 @@ describe("delegate commands", () => {
       }
 
       expect(mockUpdateIssue).toHaveBeenCalledWith("MAIN-42", {
-        delegate: { id: "actor-123" },
+        delegateId: "actor-123",
       });
     });
   });
@@ -211,7 +211,7 @@ describe("delegate commands", () => {
       }
 
       expect(mockUpdateIssue).toHaveBeenCalledWith("MAIN-42", {
-        delegate: null,
+        delegateId: null,
       });
 
       const output = JSON.parse(logs[0]);

@@ -1,9 +1,5 @@
 import { Command } from "commander";
-import {
-  readCredentials,
-  getCredentialsDir,
-} from "../credentials.js";
-import { createClient } from "../client.js";
+import { runWithClient } from "../context.js";
 import { getFormat, printResult } from "../output.js";
 
 const VALID_CATEGORIES = [
@@ -54,13 +50,6 @@ export function registerInboxCommands(program: Command): void {
     .option("--since <date>", "Only notifications after this date or duration")
     .action(async (opts: Record<string, string | boolean>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals();
-      const agent = globalOpts.agent;
-      if (!agent) {
-        console.error(
-          "Error: --agent is required (or set LINEAR_AGENT_ID env var)"
-        );
-        process.exit(4);
-      }
 
       if (
         opts.category &&
@@ -72,50 +61,48 @@ export function registerInboxCommands(program: Command): void {
         process.exit(4);
       }
 
-      const credentialsDir = getCredentialsDir(globalOpts);
-      const credentials = readCredentials(agent, credentialsDir);
-      const client = createClient(credentials);
+      await runWithClient(globalOpts, async (client) => {
+        const filter: Record<string, unknown> = {};
+        if (opts.type) {
+          filter.type = { eq: opts.type };
+        }
 
-      const filter: Record<string, unknown> = {};
-      if (opts.type) {
-        filter.type = { eq: opts.type };
-      }
-
-      const notificationsConnection = await client.notifications({
-        filter: Object.keys(filter).length > 0 ? filter : undefined,
-      });
-      let notifications = notificationsConnection.nodes;
-
-      // Client-side filters
-      if (!opts.includeArchived) {
-        notifications = notifications.filter(
-          (n: { archivedAt?: Date | null }) => !n.archivedAt
-        );
-      }
-      if (opts.category) {
-        notifications = notifications.filter(
-          (n: { type: string }) => (n as unknown as Record<string, string>).category === opts.category
-        );
-      }
-      if (opts.since) {
-        const sinceDate = parseSinceDate(opts.since as string);
-        notifications = notifications.filter(
-          (n: { createdAt: Date }) => new Date(n.createdAt) >= sinceDate
-        );
-      }
-
-      const results = [];
-      for (const n of notifications) {
-        results.push({
-          id: n.id,
-          type: n.type,
-          createdAt: n.createdAt,
-          archivedAt: n.archivedAt ?? null,
+        const notificationsConnection = await client.notifications({
+          filter: Object.keys(filter).length > 0 ? filter : undefined,
         });
-      }
+        let notifications = notificationsConnection.nodes;
 
-      const format = getFormat(globalOpts.format);
-      printResult({ data: results }, format);
+        // Client-side filters
+        if (!opts.includeArchived) {
+          notifications = notifications.filter(
+            (n: { archivedAt?: Date | null }) => !n.archivedAt
+          );
+        }
+        if (opts.category) {
+          notifications = notifications.filter(
+            (n: { type: string }) => (n as unknown as Record<string, string>).category === opts.category
+          );
+        }
+        if (opts.since) {
+          const sinceDate = parseSinceDate(opts.since as string);
+          notifications = notifications.filter(
+            (n: { createdAt: Date }) => new Date(n.createdAt) >= sinceDate
+          );
+        }
+
+        const results = [];
+        for (const n of notifications) {
+          results.push({
+            id: n.id,
+            type: n.type,
+            createdAt: n.createdAt,
+            archivedAt: n.archivedAt ?? null,
+          });
+        }
+
+        const format = getFormat(globalOpts.format);
+        printResult({ data: results }, format);
+      });
     });
 
   inbox
@@ -124,30 +111,21 @@ export function registerInboxCommands(program: Command): void {
     .argument("<id>", "Notification ID")
     .action(async (id: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals();
-      const agent = globalOpts.agent;
-      if (!agent) {
-        console.error(
-          "Error: --agent is required (or set LINEAR_AGENT_ID env var)"
-        );
-        process.exit(4);
-      }
-      const credentialsDir = getCredentialsDir(globalOpts);
-      const credentials = readCredentials(agent, credentialsDir);
-      const client = createClient(credentials);
+      await runWithClient(globalOpts, async (client) => {
+        const result = await client.archiveNotification(id);
 
-      const result = await client.notificationArchive(id);
-
-      const format = getFormat(globalOpts.format);
-      printResult(
-        {
-          data: {
-            id,
-            status: "dismissed",
-            success: result.success,
+        const format = getFormat(globalOpts.format);
+        printResult(
+          {
+            data: {
+              id,
+              status: "dismissed",
+              success: result.success,
+            },
           },
-        },
-        format
-      );
+          format
+        );
+      });
     });
 
   inbox
@@ -155,37 +133,28 @@ export function registerInboxCommands(program: Command): void {
     .description("Dismiss all unprocessed notifications")
     .action(async (_opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals();
-      const agent = globalOpts.agent;
-      if (!agent) {
-        console.error(
-          "Error: --agent is required (or set LINEAR_AGENT_ID env var)"
+      await runWithClient(globalOpts, async (client) => {
+        const notificationsConnection = await client.notifications();
+        const unarchived = notificationsConnection.nodes.filter(
+          (n: { archivedAt?: Date | null }) => !n.archivedAt
         );
-        process.exit(4);
-      }
-      const credentialsDir = getCredentialsDir(globalOpts);
-      const credentials = readCredentials(agent, credentialsDir);
-      const client = createClient(credentials);
 
-      const notificationsConnection = await client.notifications();
-      const unarchived = notificationsConnection.nodes.filter(
-        (n: { archivedAt?: Date | null }) => !n.archivedAt
-      );
+        let dismissed = 0;
+        for (const n of unarchived) {
+          await client.archiveNotification(n.id);
+          dismissed++;
+        }
 
-      let dismissed = 0;
-      for (const n of unarchived) {
-        await client.notificationArchive(n.id);
-        dismissed++;
-      }
-
-      const format = getFormat(globalOpts.format);
-      printResult(
-        {
-          data: {
-            status: "dismissed-all",
-            count: dismissed,
+        const format = getFormat(globalOpts.format);
+        printResult(
+          {
+            data: {
+              status: "dismissed-all",
+              count: dismissed,
+            },
           },
-        },
-        format
-      );
+          format
+        );
+      });
     });
 }
