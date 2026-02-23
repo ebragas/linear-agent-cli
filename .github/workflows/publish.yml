@@ -1,13 +1,13 @@
-name: Publish
+name: Release
 on:
   push:
     branches: [main]
 
 permissions:
-  id-token: write
+  contents: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,9 +15,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm publish --provenance --access public
+
+      - name: Package tarball
+        run: |
+          npm pack
+          mv ebragas-linear-cli-*.tgz ebragas-linear-cli.tgz
+
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            ebragas-linear-cli.tgz \
+            --title "v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest
