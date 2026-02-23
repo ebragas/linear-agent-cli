@@ -17,6 +17,7 @@ const mockSearchIssues = vi.fn();
 const mockTeams = vi.fn();
 const mockTeam = vi.fn();
 const mockUsers = vi.fn();
+const mockProjects = vi.fn();
 
 // Mock @linear/sdk
 vi.mock("@linear/sdk", () => ({
@@ -32,6 +33,7 @@ vi.mock("@linear/sdk", () => ({
     teams: mockTeams,
     team: mockTeam,
     users: mockUsers,
+    projects: mockProjects,
   })),
 }));
 
@@ -67,6 +69,7 @@ describe("issue commands", () => {
     mockTeams.mockReset();
     mockTeam.mockReset();
     mockUsers.mockReset();
+    mockProjects.mockReset();
 
     // Default mock for users (needed by resolveUser)
     mockUsers.mockResolvedValue({
@@ -920,6 +923,68 @@ describe("issue commands", () => {
       expect(output.id).toBe("MAIN-80");
       expect(output.relations.succeeded).toHaveLength(1);
       expect(output.relations.failed).toHaveLength(1);
+    });
+  });
+
+  describe("resolveTeam and resolveProject validation", () => {
+    it("throws ValidationError when team name does not match", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+      const { ValidationError } = await import("../errors.js");
+
+      mockTeams.mockResolvedValue({ nodes: [] });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      await expect(
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "create",
+          "--title", "Test",
+          "--team", "nonexistent",
+        ])
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("throws ValidationError when project name does not match", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+      const { ValidationError } = await import("../errors.js");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockProjects.mockResolvedValue({ nodes: [] });
+      mockCreateIssue.mockResolvedValue({
+        issue: Promise.resolve({
+          id: "issue-uuid-x",
+          identifier: "MAIN-99",
+          title: "Test",
+          url: "https://linear.app/test/issue/MAIN-99",
+        }),
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      await expect(
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "create",
+          "--title", "Test",
+          "--team", "Engineering",
+          "--project", "nonexistent",
+        ])
+      ).rejects.toThrow(ValidationError);
     });
   });
 });
