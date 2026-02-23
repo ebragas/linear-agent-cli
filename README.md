@@ -6,7 +6,7 @@ CLI tool for AI agents to interact with Linear using per-agent OAuth identity. E
 
 ```bash
 # Install globally
-npm install -g @ebragas/linear-cli
+npm install -g https://github.com/ebragas/linear-agent-cli/releases/latest/download/ebragas-linear-cli.tgz
 
 # Authenticate an agent (client credentials — recommended)
 linear auth setup --client-credentials \
