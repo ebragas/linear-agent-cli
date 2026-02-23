@@ -15,6 +15,7 @@ const mockIssues = vi.fn();
 const mockIssue = vi.fn();
 const mockSearchIssues = vi.fn();
 const mockTeams = vi.fn();
+const mockTeam = vi.fn();
 const mockUsers = vi.fn();
 
 // Mock @linear/sdk
@@ -29,6 +30,7 @@ vi.mock("@linear/sdk", () => ({
     searchIssues: mockSearchIssues,
     createIssueRelation: mockCreateIssueRelation,
     teams: mockTeams,
+    team: mockTeam,
     users: mockUsers,
   })),
 }));
@@ -63,6 +65,7 @@ describe("issue commands", () => {
     mockIssue.mockReset();
     mockSearchIssues.mockReset();
     mockTeams.mockReset();
+    mockTeam.mockReset();
     mockUsers.mockReset();
 
     // Default mock for users (needed by resolveUser)
@@ -291,6 +294,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -349,6 +353,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -397,6 +402,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -645,7 +651,7 @@ describe("issue commands", () => {
       const { Command } = await import("commander");
 
       mockSearchIssues.mockResolvedValue({ nodes: [] });
-      mockTeams.mockResolvedValue({ nodes: [] });
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-uuid" }] });
 
       const program = new Command();
       program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
@@ -755,6 +761,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -815,6 +822,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -864,6 +872,7 @@ describe("issue commands", () => {
       mockTeams.mockResolvedValue({
         nodes: [{ id: "team-1", key: "MAIN" }],
       });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
