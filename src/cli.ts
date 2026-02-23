@@ -3,6 +3,15 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { registerAuthCommands } from "./commands/auth.js";
 import { registerIssueCommands } from "./commands/issue.js";
+import { registerCommentCommands } from "./commands/comment.js";
+import { registerInboxCommands } from "./commands/inbox.js";
+import { registerDelegateCommands } from "./commands/delegate.js";
+import { registerLabelCommands } from "./commands/label.js";
+import { registerUserCommands } from "./commands/user.js";
+import { registerTeamCommands } from "./commands/team.js";
+import { registerProjectCommands } from "./commands/project.js";
+import { registerAttachmentCommands } from "./commands/attachment.js";
+import { registerStateCommands } from "./commands/state.js";
 import { CLIError } from "./errors.js";
 
 const pkg = JSON.parse(
@@ -29,15 +38,15 @@ program
 // Register command groups
 registerAuthCommands(program);
 registerIssueCommands(program);
-program.command("comment").description("Add and list comments on issues");
-program.command("inbox").description("View and manage inbox notifications");
-program.command("delegate").description("Assign and delegate issues");
-program.command("label").description("Manage labels");
-program.command("user").description("Look up users and teams");
-program.command("team").description("Manage team settings and members");
-program.command("project").description("Manage projects and milestones");
-program.command("attachment").description("Manage issue attachments");
-program.command("state").description("Manage workflow states");
+registerCommentCommands(program);
+registerInboxCommands(program);
+registerDelegateCommands(program);
+registerLabelCommands(program);
+registerUserCommands(program);
+registerTeamCommands(program);
+registerProjectCommands(program);
+registerAttachmentCommands(program);
+registerStateCommands(program);
 
 program.parseAsync(process.argv).catch((err) => {
   if (err instanceof CLIError) {
