@@ -106,7 +106,8 @@ describe.skipIf(!INTEGRATION)("integration: lifecycle", () => {
         `issue update ${createdIssueId} --title "Updated integration test issue"`
       )
     );
-    expect(updateOutput.success).toBeTruthy();
+    expect(updateOutput.id).toBeTruthy();
+    expect(updateOutput.title).toBe("Updated integration test issue");
 
     // Transition (to first available state)
     const stateOutput = JSON.parse(

@@ -14,7 +14,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "test:integration": "INTEGRATION=true vitest run src/__tests__/integration/"
+    "test:integration": "sh -c 'set -a && . ./.env.integration && vitest run src/__tests__/integration/'"
   },
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@linear/sdk": "^37.0.0",
+    "@linear/sdk": "^75.0.0",
     "commander": "^13.1.0"
   },
   "devDependencies": {

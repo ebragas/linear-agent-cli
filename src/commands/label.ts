@@ -25,7 +25,7 @@ export function registerLabelCommands(program: Command): void {
 
       const filter: Record<string, unknown> = {};
       if (opts.team) {
-        filter.team = { name: { eqCaseInsensitive: opts.team } };
+        filter.team = { name: { eqIgnoreCase: opts.team } };
       }
 
       const result = await client.issueLabels({
@@ -70,7 +70,7 @@ export function registerLabelCommands(program: Command): void {
 
       if (opts.team) {
         const teams = await client.teams({
-          filter: { name: { eqCaseInsensitive: opts.team } },
+          filter: { name: { eqIgnoreCase: opts.team } },
         });
         const team = teams.nodes[0];
         if (!team) {

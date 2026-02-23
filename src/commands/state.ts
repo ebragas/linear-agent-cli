@@ -29,7 +29,7 @@ export function registerStateCommands(program: Command): void {
       if (opts.team) {
         // Filter by specific team
         const teams = await client.teams({
-          filter: { name: { eqCaseInsensitive: opts.team } },
+          filter: { name: { eqIgnoreCase: opts.team } },
         });
         let team = teams.nodes[0];
         if (!team) {

@@ -27,7 +27,7 @@ export function registerUserCommands(program: Command): void {
       let users;
       if (opts.team) {
         const teams = await client.teams({
-          filter: { name: { eqCaseInsensitive: opts.team } },
+          filter: { name: { eqIgnoreCase: opts.team } },
         });
         const team = teams.nodes[0];
         if (!team) {

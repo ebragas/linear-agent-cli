@@ -13,6 +13,9 @@ node_modules/
 # Package artifacts
 *.tgz
 
+# Environment files
+.env*
+
 # ccpm local files
 .claude/epics/
 ccpm/settings.local.json

@@ -101,7 +101,7 @@ describe("inbox commands", () => {
       }
 
       expect(mockNotifications).toHaveBeenCalledWith({
-        filter: { archivedAt: { null: true } },
+        filter: undefined,
       });
       const output = JSON.parse(logs[0]);
       expect(output.results).toHaveLength(2);
@@ -155,8 +155,8 @@ describe("inbox commands", () => {
         console.log = origLog;
       }
 
-      // Should NOT have archivedAt filter
-      expect(mockNotifications).toHaveBeenCalledWith({ filter: {} });
+      // Should NOT have archivedAt filter — both paths call without filter
+      expect(mockNotifications).toHaveBeenCalledWith({ filter: undefined });
     });
   });
 
@@ -253,9 +253,7 @@ describe("inbox commands", () => {
         console.log = origLog;
       }
 
-      expect(mockNotifications).toHaveBeenCalledWith({
-        filter: { archivedAt: { null: true } },
-      });
+      expect(mockNotifications).toHaveBeenCalledWith();
       expect(mockNotificationArchive).toHaveBeenCalledTimes(3);
       expect(mockNotificationArchive).toHaveBeenCalledWith("notif-a");
       expect(mockNotificationArchive).toHaveBeenCalledWith("notif-b");

@@ -77,17 +77,21 @@ export function registerInboxCommands(program: Command): void {
       const client = createClient(credentials);
 
       const filter: Record<string, unknown> = {};
-      if (!opts.includeArchived) {
-        filter.archivedAt = { null: true };
-      }
       if (opts.type) {
         filter.type = { eq: opts.type };
       }
 
-      const notificationsConnection = await client.notifications({ filter });
+      const notificationsConnection = await client.notifications({
+        filter: Object.keys(filter).length > 0 ? filter : undefined,
+      });
       let notifications = notificationsConnection.nodes;
 
       // Client-side filters
+      if (!opts.includeArchived) {
+        notifications = notifications.filter(
+          (n: { archivedAt?: Date | null }) => !n.archivedAt
+        );
+      }
       if (opts.category) {
         notifications = notifications.filter(
           (n: { type: string }) => (n as unknown as Record<string, string>).category === opts.category
@@ -162,12 +166,13 @@ export function registerInboxCommands(program: Command): void {
       const credentials = readCredentials(agent, credentialsDir);
       const client = createClient(credentials);
 
-      const notificationsConnection = await client.notifications({
-        filter: { archivedAt: { null: true } },
-      });
+      const notificationsConnection = await client.notifications();
+      const unarchived = notificationsConnection.nodes.filter(
+        (n: { archivedAt?: Date | null }) => !n.archivedAt
+      );
 
       let dismissed = 0;
-      for (const n of notificationsConnection.nodes) {
+      for (const n of unarchived) {
         await client.notificationArchive(n.id);
         dismissed++;
       }

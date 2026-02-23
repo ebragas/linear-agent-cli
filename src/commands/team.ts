@@ -50,7 +50,7 @@ export function registerTeamCommands(program: Command): void {
       const client = createClient(credentials);
 
       const teams = await client.teams({
-        filter: { name: { eqCaseInsensitive: teamName } },
+        filter: { name: { eqIgnoreCase: teamName } },
       });
       let team = teams.nodes[0];
       if (!team) {

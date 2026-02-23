@@ -25,7 +25,7 @@ export function registerProjectCommands(program: Command): void {
 
       const filter: Record<string, unknown> = {};
       if (opts.team) {
-        filter.accessibleTeams = { name: { eqCaseInsensitive: opts.team } };
+        filter.accessibleTeams = { name: { eqIgnoreCase: opts.team } };
       }
 
       const result = await client.projects({
