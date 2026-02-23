@@ -1,0 +1,47 @@
+{
+  "name": "@ebragas/linear-cli",
+  "version": "0.1.0",
+  "description": "CLI tool for AI agents to interact with Linear using per-agent OAuth identity",
+  "bin": {
+    "linear": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:integration": "sh -c 'set -a && . ./.env.integration && vitest run src/__tests__/integration/'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ebragas/linear-agent-cli.git"
+  },
+  "keywords": [
+    "linear",
+    "cli",
+    "agent",
+    "ai",
+    "oauth"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@linear/sdk": "^75.0.0",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
