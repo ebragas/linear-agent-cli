@@ -124,7 +124,10 @@ async function resolveProject(
   const projects = await client.projects({
     filter: { name: { eqIgnoreCase: project } },
   });
-  return projects.nodes[0]?.id ?? project;
+  if (!projects.nodes[0]) {
+    throw new ValidationError(`No project matching "${project}"`);
+  }
+  return projects.nodes[0].id;
 }
 
 async function resolveTeam(
@@ -137,7 +140,10 @@ async function resolveTeam(
   const teams = await client.teams({
     filter: { name: { eqIgnoreCase: team } },
   });
-  return teams.nodes[0]?.id ?? team;
+  if (!teams.nodes[0]) {
+    throw new ValidationError(`No team matching "${team}"`);
+  }
+  return teams.nodes[0].id;
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -316,13 +322,8 @@ export function registerIssueCommands(program: Command): void {
         const format = getFormat(globalOpts.format);
 
         // Resolve team
-        const teams = await client.teams({
-          filter: { name: { eqIgnoreCase: opts.team } },
-        });
-        let teamId = teams.nodes[0]?.id;
-        if (!teamId) {
-          teamId = opts.team;
-        }
+        const teamId = await resolveTeam(client, opts.team);
+        const team = await client.team(teamId);
 
         const input: Record<string, unknown> = {
           title: opts.title,
@@ -356,16 +357,13 @@ export function registerIssueCommands(program: Command): void {
 
         // State
         if (opts.state) {
-          const teamKey = teams.nodes[0]?.key;
-          if (teamKey) {
-            input.stateId = await resolveState(
-              opts.state,
-              teamKey,
-              client,
-              agentId,
-              credentialsDir
-            );
-          }
+          input.stateId = await resolveState(
+            opts.state,
+            team.key,
+            client,
+            agentId,
+            credentialsDir
+          );
         }
 
         // Labels
