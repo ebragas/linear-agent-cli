@@ -1,0 +1,1 @@
+../../ccpm/commands/prompt.md
