@@ -1,6 +1,8 @@
 import { Command, Option } from "commander";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { registerAuthCommands } from "./commands/auth.js";
+import { CLIError } from "./errors.js";
 
 const pkg = JSON.parse(
   readFileSync(join(__dirname, "..", "package.json"), "utf-8")
@@ -23,8 +25,10 @@ program
       .choices(["json", "text"])
   );
 
-// Register placeholder subcommands
-program.command("auth").description("Manage authentication and API tokens");
+// Register command groups
+registerAuthCommands(program);
+
+// Placeholder subcommands (to be implemented in subsequent tasks)
 program.command("issue").description("Create, read, update, and search issues");
 program.command("comment").description("Add and list comments on issues");
 program.command("inbox").description("View and manage inbox notifications");
@@ -36,4 +40,12 @@ program.command("project").description("Manage projects and milestones");
 program.command("attachment").description("Manage issue attachments");
 program.command("state").description("Manage workflow states");
 
-program.parseAsync(process.argv);
+program.parseAsync(process.argv).catch((err) => {
+  if (err instanceof CLIError) {
+    console.error(`Error: ${err.message}`);
+    if (err.resolution) console.error(err.resolution);
+    process.exit(err.exitCode);
+  }
+  console.error(`Error: ${err.message ?? err}`);
+  process.exit(1);
+});
