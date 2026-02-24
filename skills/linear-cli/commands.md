@@ -6,6 +6,7 @@ All commands require `--agent <id>` and `--format json` for data output.
 
 ```bash
 linear issue get <id> --agent <id> --format json
+linear issue get MAIN-42 MAIN-43 MAIN-44 --agent <id> --format json  # batch: returns array; per-ID errors reported as warnings, not failures
 linear issue list --agent <id> --format json
 linear issue list --assignee me --agent <id> --format json
 linear issue list --state "In Progress" --agent <id> --format json
