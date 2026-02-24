@@ -6,6 +6,13 @@ import { getFormat, printResult } from "../output.js";
 import { PartialSuccessError, ValidationError } from "../errors.js";
 import { runWithClient } from "../context.js";
 
+const FREQUENCY_MAP: Record<string, string> = {
+  daily: "days",
+  weekly: "weeks",
+  monthly: "months",
+  yearly: "years",
+};
+
 function parseDate(value: string): string {
   // Support ISO-8601 durations like -P7D (7 days ago)
   const durationMatch = value.match(/^-P(\d+)D$/);
@@ -746,6 +753,156 @@ export function registerIssueCommands(program: Command): void {
           },
           format
         );
+      });
+    });
+
+  // issue schedule subgroup
+  const schedule = issue
+    .command("schedule")
+    .description("Manage recurring issue schedules");
+
+  // issue schedule create
+  schedule
+    .command("create")
+    .description("Create a recurring issue schedule")
+    .requiredOption("--title <text>", "Issue title")
+    .requiredOption("--team <team>", "Team name or ID")
+    .requiredOption(
+      "--frequency <freq>",
+      "Recurrence frequency (daily, weekly, monthly, yearly)"
+    )
+    .requiredOption("--start-at <date>", "Start date (ISO format, e.g. 2026-03-01)")
+    .option("--interval <n>", "Recurrence interval (default: 1)", "1")
+    .option("--description <text>", "Issue description")
+    .option("--state <state>", "Initial workflow state")
+    .option("--assignee <user>", "Assign to user")
+    .option("--priority <n>", "Priority (0-4)")
+    .action(async (opts, cmd) => {
+      const globalOpts = cmd.optsWithGlobals();
+      await runWithClient(globalOpts, async (client, { credentials, agentId, credentialsDir }) => {
+        const format = getFormat(globalOpts.format);
+
+        const scheduleType = FREQUENCY_MAP[opts.frequency];
+        if (!scheduleType) {
+          throw new ValidationError(
+            `Invalid frequency "${opts.frequency}"`,
+            Object.keys(FREQUENCY_MAP)
+          );
+        }
+
+        const teamId = await resolveTeam(client, opts.team);
+
+        const interval = parseInt(opts.interval, 10);
+        if (isNaN(interval) || interval < 1) {
+          throw new ValidationError(
+            `Invalid interval "${opts.interval}". Expected a positive integer.`
+          );
+        }
+
+        const templateData: Record<string, unknown> = {
+          title: opts.title,
+          teamId,
+          schedule: {
+            startAt: opts.startAt,
+            interval,
+            type: scheduleType,
+          },
+        };
+
+        if (opts.description) templateData.description = opts.description;
+
+        if (opts.priority !== undefined) {
+          const priority = parseInt(opts.priority, 10);
+          if (isNaN(priority) || priority < 0 || priority > 4) {
+            throw new ValidationError(
+              `Invalid priority "${opts.priority}". Expected an integer between 0 and 4.`
+            );
+          }
+          templateData.priority = priority;
+        }
+
+        if (opts.state) {
+          const team = await client.team(teamId);
+          templateData.stateId = await resolveState(
+            opts.state,
+            team.key,
+            client,
+            agentId,
+            credentialsDir
+          );
+        }
+
+        if (opts.assignee) {
+          templateData.assigneeId = await resolveUser(opts.assignee, credentials, client);
+        }
+
+        const payload = await client.createTemplate({
+          type: "recurringIssue",
+          name: opts.title,
+          teamId,
+          templateData: JSON.stringify(templateData),
+        });
+
+        const template = await payload.template;
+        printResult({ data: { id: template.id, name: template.name } }, format);
+      });
+    });
+
+  // issue schedule list
+  schedule
+    .command("list")
+    .description("List recurring issue schedules")
+    .option("--team <team>", "Filter by team name or ID")
+    .action(async (opts, cmd) => {
+      const globalOpts = cmd.optsWithGlobals();
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
+
+        const teamId = opts.team ? await resolveTeam(client, opts.team) : null;
+        const allTemplates = await client.templates;
+
+        type RecurringTemplate = {
+          id: string;
+          name: string;
+          type: string;
+          templateData: string | Record<string, unknown>;
+          team: Promise<{ id: string } | null>;
+        };
+
+        const filtered = await Promise.all(
+          allTemplates
+            .filter((t: RecurringTemplate) => t.type === "recurringIssue")
+            .map(async (t: RecurringTemplate) => {
+              const team = await t.team;
+              return { template: t, teamId: team?.id ?? null };
+            })
+        );
+
+        const results = filtered
+          .filter(({ teamId: tid }) => teamId === null || tid === teamId)
+          .map(({ template: t }) => {
+            const data =
+              typeof t.templateData === "string"
+                ? (() => { try { return JSON.parse(t.templateData); } catch { return {}; } })()
+                : (t.templateData as Record<string, unknown>) ?? {};
+            return { id: t.id, name: t.name, schedule: (data.schedule as unknown) ?? null };
+          });
+
+        printResult({ data: results }, format);
+      });
+    });
+
+  // issue schedule delete
+  schedule
+    .command("delete")
+    .description("Delete a recurring issue schedule")
+    .argument("<id>", "Template UUID")
+    .action(async (id, _opts, cmd) => {
+      const globalOpts = cmd.optsWithGlobals();
+      await runWithClient(globalOpts, async (client) => {
+        const format = getFormat(globalOpts.format);
+        await client.deleteTemplate(id);
+        printResult({ data: { id, status: "deleted" } }, format);
       });
     });
 }
