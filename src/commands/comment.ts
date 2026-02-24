@@ -48,9 +48,11 @@ export function registerCommentCommands(program: Command): void {
         let body = opts.body;
         if (opts.bodyFile) {
           body = readFileSync(opts.bodyFile, "utf-8");
+        } else if (!body && !process.stdin.isTTY) {
+          body = readFileSync(0, "utf-8").trim();
         }
         if (!body) {
-          console.error("Error: --body or --body-file is required");
+          console.error("Error: --body, --body-file, or stdin pipe is required");
           process.exit(4);
         }
 
@@ -90,9 +92,11 @@ export function registerCommentCommands(program: Command): void {
         let body = opts.body;
         if (opts.bodyFile) {
           body = readFileSync(opts.bodyFile, "utf-8");
+        } else if (!body && !process.stdin.isTTY) {
+          body = readFileSync(0, "utf-8").trim();
         }
         if (!body) {
-          console.error("Error: --body or --body-file is required");
+          console.error("Error: --body, --body-file, or stdin pipe is required");
           process.exit(4);
         }
 

@@ -334,6 +334,8 @@ export function registerIssueCommands(program: Command): void {
           input.description = readFileSync(opts.descriptionFile, "utf-8");
         } else if (opts.description) {
           input.description = opts.description;
+        } else if (!process.stdin.isTTY) {
+          input.description = readFileSync(0, "utf-8").trim();
         }
 
         // Assignee
@@ -476,6 +478,8 @@ export function registerIssueCommands(program: Command): void {
           input.description = readFileSync(opts.descriptionFile, "utf-8");
         } else if (opts.description) {
           input.description = opts.description;
+        } else if (!process.stdin.isTTY) {
+          input.description = readFileSync(0, "utf-8").trim();
         }
 
         // Assignee (nullable)
