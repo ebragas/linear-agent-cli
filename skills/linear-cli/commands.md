@@ -52,7 +52,7 @@ linear inbox dismiss-all --agent <id>
 ## Delegation
 
 ```bash
-linear delegate MAIN-42 --to analyst --agent <id>
+linear delegate assign MAIN-42 --to analyst --agent <id>
 linear delegate list --agent <id> --format json      # issues delegated to you
 linear delegate remove MAIN-42 --agent <id>
 ```
