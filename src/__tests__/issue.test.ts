@@ -18,6 +18,9 @@ const mockTeams = vi.fn();
 const mockTeam = vi.fn();
 const mockUsers = vi.fn();
 const mockProjects = vi.fn();
+const mockCreateTemplate = vi.fn();
+const mockDeleteTemplate = vi.fn();
+const mockTemplates = vi.fn();
 
 // Mock @linear/sdk
 vi.mock("@linear/sdk", () => ({
@@ -34,6 +37,9 @@ vi.mock("@linear/sdk", () => ({
     team: mockTeam,
     users: mockUsers,
     projects: mockProjects,
+    createTemplate: mockCreateTemplate,
+    deleteTemplate: mockDeleteTemplate,
+    get templates() { return mockTemplates(); },
   })),
 }));
 
@@ -1119,6 +1125,212 @@ describe("issue commands", () => {
           "--project", "nonexistent",
         ])
       ).rejects.toThrow(ValidationError);
+    });
+  });
+
+  describe("issue schedule create", () => {
+    it("creates a recurring issue template with weekly schedule", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-1", name: "Daily Standup" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Daily Standup",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockCreateTemplate).toHaveBeenCalledOnce();
+      const callArg = mockCreateTemplate.mock.calls[0][0];
+      expect(callArg.type).toBe("recurringIssue");
+      expect(callArg.name).toBe("Daily Standup");
+      expect(callArg.teamId).toBe("team-1");
+
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.title).toBe("Daily Standup");
+      expect(templateData.schedule.type).toBe("weeks");
+      expect(templateData.schedule.interval).toBe(1);
+      expect(templateData.schedule.startAt).toBe("2026-03-01");
+
+      const output = JSON.parse(logs[0]);
+      expect(output.id).toBe("template-1");
+      expect(output.name).toBe("Daily Standup");
+    });
+
+    it("respects --interval and --frequency daily flags", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-2", name: "Morning Check-in" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Morning Check-in",
+          "--team", "Engineering",
+          "--frequency", "daily",
+          "--interval", "2",
+          "--start-at", "2026-03-01",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const callArg = mockCreateTemplate.mock.lastCall![0];
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.schedule.type).toBe("days");
+      expect(templateData.schedule.interval).toBe(2);
+    });
+  });
+
+  describe("issue schedule list", () => {
+    it("lists recurring issue templates filtered by team", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTemplates.mockResolvedValue([
+        { id: "t-1", name: "Weekly Sync", type: "recurringIssue", templateData: "{}", team: Promise.resolve({ id: "team-1" }) },
+        { id: "t-2", name: "Regular Template", type: "issue", templateData: "{}", team: Promise.resolve(null) },
+        { id: "t-3", name: "Daily Report", type: "recurringIssue", templateData: "{}", team: Promise.resolve({ id: "team-1" }) },
+      ]);
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "list",
+          "--team", "Engineering",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(2);
+      expect(output.results[0].id).toBe("t-1");
+      expect(output.results[1].id).toBe("t-3");
+    });
+
+    it("lists all recurring issue templates when no team filter", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTemplates.mockResolvedValue([
+        { id: "t-1", name: "Weekly Sync", type: "recurringIssue", templateData: "{}", team: Promise.resolve(null) },
+        { id: "t-2", name: "Regular Template", type: "issue", templateData: "{}", team: Promise.resolve(null) },
+      ]);
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "list",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(1);
+      expect(output.results[0].id).toBe("t-1");
+    });
+  });
+
+  describe("issue schedule delete", () => {
+    it("deletes a recurring issue template by id", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockDeleteTemplate.mockResolvedValue({ success: true });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "delete", "template-uuid-123",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockDeleteTemplate).toHaveBeenCalledWith("template-uuid-123");
+      const output = JSON.parse(logs[0]);
+      expect(output.success).toBe(true);
     });
   });
 });
