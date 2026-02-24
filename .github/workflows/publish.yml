@@ -21,11 +21,6 @@ jobs:
       - run: npm run build
       - run: npm test
 
-      - name: Package tarball
-        run: |
-          npm pack
-          mv ebragas-linear-cli-*.tgz ebragas-linear-cli.tgz
-
       - name: Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
