@@ -335,7 +335,14 @@ export function registerIssueCommands(program: Command): void {
         } else if (opts.description) {
           input.description = opts.description;
         } else if (!process.stdin.isTTY) {
-          input.description = readFileSync(0, "utf-8").trim();
+          try {
+            const stdinContent = readFileSync(0, "utf-8").trim();
+            if (stdinContent) input.description = stdinContent;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Error: Failed to read from stdin: ${message}`);
+            process.exit(4);
+          }
         }
 
         // Assignee
@@ -479,7 +486,14 @@ export function registerIssueCommands(program: Command): void {
         } else if (opts.description) {
           input.description = opts.description;
         } else if (!process.stdin.isTTY) {
-          input.description = readFileSync(0, "utf-8").trim();
+          try {
+            const stdinContent = readFileSync(0, "utf-8").trim();
+            if (stdinContent) input.description = stdinContent;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Error: Failed to read from stdin: ${message}`);
+            process.exit(4);
+          }
         }
 
         // Assignee (nullable)

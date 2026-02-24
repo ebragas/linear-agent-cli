@@ -49,7 +49,13 @@ export function registerCommentCommands(program: Command): void {
         if (opts.bodyFile) {
           body = readFileSync(opts.bodyFile, "utf-8");
         } else if (!body && !process.stdin.isTTY) {
-          body = readFileSync(0, "utf-8").trim();
+          try {
+            body = readFileSync(0, "utf-8").trim();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Error: Failed to read from stdin: ${message}`);
+            process.exit(4);
+          }
         }
         if (!body) {
           console.error("Error: --body, --body-file, or stdin pipe is required");
@@ -93,7 +99,13 @@ export function registerCommentCommands(program: Command): void {
         if (opts.bodyFile) {
           body = readFileSync(opts.bodyFile, "utf-8");
         } else if (!body && !process.stdin.isTTY) {
-          body = readFileSync(0, "utf-8").trim();
+          try {
+            body = readFileSync(0, "utf-8").trim();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Error: Failed to read from stdin: ${message}`);
+            process.exit(4);
+          }
         }
         if (!body) {
           console.error("Error: --body, --body-file, or stdin pipe is required");

@@ -524,6 +524,65 @@ describe("issue commands", () => {
     });
   });
 
+  describe("issue update stdin", () => {
+    it("reads description from stdin when piped", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Updated description from stdin";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerIssueCommands } = await import("../commands/issue.js");
+        const { Command } = await import("commander");
+
+        mockUpdateIssue.mockResolvedValue({
+          issue: Promise.resolve({
+            identifier: "MAIN-42",
+            title: "Existing title",
+            url: "https://linear.app/test/issue/MAIN-42",
+          }),
+        });
+
+        const program = new Command();
+        program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+        registerIssueCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "issue", "update", "MAIN-42",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockUpdateIssue).toHaveBeenCalledWith(
+          "MAIN-42",
+          expect.objectContaining({ description: "Updated description from stdin" })
+        );
+      } finally {
+        vi.doUnmock("fs");
+      }
+    });
+  });
+
   describe("issue update", () => {
     it("handles nullable fields: null clears them", async () => {
       vi.resetModules();

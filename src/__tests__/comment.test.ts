@@ -347,6 +347,63 @@ describe("comment commands", () => {
     });
   });
 
+  describe("comment update stdin", () => {
+    it("updates a comment reading body from stdin", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Updated via stdin";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerCommentCommands } = await import("../commands/comment.js");
+        const { Command } = await import("commander");
+
+        mockUpdateComment.mockResolvedValueOnce({ success: true });
+
+        const program = new Command();
+        program
+          .option("--agent <id>")
+          .option("--credentials-dir <path>")
+          .option("--format <format>");
+        registerCommentCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "comment", "update", "comment-123",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockUpdateComment).toHaveBeenCalledWith("comment-123", {
+          body: "Updated via stdin",
+        });
+        const output = JSON.parse(logs[0]);
+        expect(output.body).toBe("Updated via stdin");
+      } finally {
+        vi.doUnmock("fs");
+      }
+    });
+  });
+
   describe("comment update", () => {
     it("updates a comment body", async () => {
       const { registerCommentCommands } = await import(
