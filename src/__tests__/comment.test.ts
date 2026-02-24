@@ -33,6 +33,7 @@ const validCredentials: Credentials = {
 
 describe("comment commands", () => {
   let testDir: string;
+  let origStdinIsTTY: boolean | undefined;
 
   beforeEach(() => {
     testDir = join(tmpdir(), `linear-cli-comment-test-${Date.now()}`);
@@ -42,9 +43,14 @@ describe("comment commands", () => {
     mockCreateComment.mockReset();
     mockUpdateComment.mockReset();
     mockComments.mockReset();
+
+    // Ensure stdin is treated as a TTY so tests don't accidentally read from stdin
+    origStdinIsTTY = process.stdin.isTTY;
+    (process.stdin as { isTTY: boolean | undefined }).isTTY = true;
   });
 
   afterEach(() => {
+    (process.stdin as { isTTY: boolean | undefined }).isTTY = origStdinIsTTY;
     try {
       const { rmSync } = require("fs");
       rmSync(testDir, { recursive: true, force: true });
@@ -277,6 +283,124 @@ describe("comment commands", () => {
       });
       const output = JSON.parse(logs[0]);
       expect(output.parentId).toBe("parent-comment-id");
+    });
+  });
+
+  describe("comment add stdin", () => {
+    it("creates a comment reading body from stdin", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Piped stdin content";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerCommentCommands } = await import("../commands/comment.js");
+        const { Command } = await import("commander");
+
+        mockCreateComment.mockResolvedValueOnce({
+          success: true,
+          comment: Promise.resolve({ id: "stdin-comment-1" }),
+        });
+
+        const program = new Command();
+        program
+          .option("--agent <id>")
+          .option("--credentials-dir <path>")
+          .option("--format <format>");
+        registerCommentCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "comment", "add", "MAIN-42",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockCreateComment).toHaveBeenCalledWith({
+          issueId: "MAIN-42",
+          body: "Piped stdin content",
+        });
+        const output = JSON.parse(logs[0]);
+        expect(output.id).toBe("stdin-comment-1");
+      } finally {
+        vi.doUnmock("fs");
+      }
+    });
+  });
+
+  describe("comment update stdin", () => {
+    it("updates a comment reading body from stdin", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Updated via stdin";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerCommentCommands } = await import("../commands/comment.js");
+        const { Command } = await import("commander");
+
+        mockUpdateComment.mockResolvedValueOnce({ success: true });
+
+        const program = new Command();
+        program
+          .option("--agent <id>")
+          .option("--credentials-dir <path>")
+          .option("--format <format>");
+        registerCommentCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "comment", "update", "comment-123",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockUpdateComment).toHaveBeenCalledWith("comment-123", {
+          body: "Updated via stdin",
+        });
+        const output = JSON.parse(logs[0]);
+        expect(output.body).toBe("Updated via stdin");
+      } finally {
+        vi.doUnmock("fs");
+      }
     });
   });
 

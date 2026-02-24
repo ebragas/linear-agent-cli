@@ -51,11 +51,16 @@ const validCredentials: Credentials = {
 
 describe("issue commands", () => {
   let testDir: string;
+  let origStdinIsTTY: boolean | undefined;
 
   beforeEach(() => {
     testDir = join(tmpdir(), `linear-cli-issue-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
     writeCredentials("test-bot", testDir, validCredentials);
+
+    // Ensure stdin is treated as a TTY so tests don't accidentally read from stdin
+    origStdinIsTTY = process.stdin.isTTY;
+    (process.stdin as { isTTY: boolean | undefined }).isTTY = true;
 
     // Reset all mocks
     mockCreateIssueRelation.mockReset().mockResolvedValue({ success: true });
@@ -81,6 +86,7 @@ describe("issue commands", () => {
   });
 
   afterEach(() => {
+    (process.stdin as { isTTY: boolean | undefined }).isTTY = origStdinIsTTY;
     try {
       const { rmSync } = require("fs");
       rmSync(testDir, { recursive: true, force: true });
@@ -446,6 +452,134 @@ describe("issue commands", () => {
           delegateId: "user-1", // "Alice" resolved from user cache
         })
       );
+    });
+  });
+
+  describe("issue create stdin", () => {
+    it("reads description from stdin when piped", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Description from stdin";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerIssueCommands } = await import("../commands/issue.js");
+        const { Command } = await import("commander");
+
+        mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+        mockTeam.mockResolvedValue({ key: "MAIN" });
+        mockCreateIssue.mockResolvedValue({
+          issue: Promise.resolve({
+            id: "issue-stdin",
+            identifier: "MAIN-99",
+            title: "Stdin issue",
+            url: "https://linear.app/test/issue/MAIN-99",
+          }),
+        });
+
+        const program = new Command();
+        program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+        registerIssueCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "issue", "create",
+            "--title", "Stdin issue",
+            "--team", "Engineering",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockCreateIssue).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Stdin issue",
+            teamId: "team-1",
+            description: "Description from stdin",
+          })
+        );
+        const output = JSON.parse(logs[0]);
+        expect(output.id).toBe("MAIN-99");
+      } finally {
+        vi.doUnmock("fs");
+      }
+    });
+  });
+
+  describe("issue update stdin", () => {
+    it("reads description from stdin when piped", async () => {
+      vi.resetModules();
+
+      vi.doMock("fs", async () => {
+        const actual = await vi.importActual<typeof import("fs")>("fs");
+        return {
+          ...actual,
+          readFileSync: (fd: unknown, ...args: unknown[]) => {
+            if (fd === 0) return "Updated description from stdin";
+            return (actual.readFileSync as (...a: unknown[]) => unknown)(fd, ...args);
+          },
+        };
+      });
+
+      (process.stdin as { isTTY: boolean | undefined }).isTTY = undefined;
+
+      try {
+        const { registerIssueCommands } = await import("../commands/issue.js");
+        const { Command } = await import("commander");
+
+        mockUpdateIssue.mockResolvedValue({
+          issue: Promise.resolve({
+            identifier: "MAIN-42",
+            title: "Existing title",
+            url: "https://linear.app/test/issue/MAIN-42",
+          }),
+        });
+
+        const program = new Command();
+        program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+        registerIssueCommands(program);
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...a: unknown[]) => logs.push(a.join(" "));
+
+        try {
+          await program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "issue", "update", "MAIN-42",
+          ]);
+        } finally {
+          console.log = origLog;
+        }
+
+        expect(mockUpdateIssue).toHaveBeenCalledWith(
+          "MAIN-42",
+          expect.objectContaining({ description: "Updated description from stdin" })
+        );
+      } finally {
+        vi.doUnmock("fs");
+      }
     });
   });
 
