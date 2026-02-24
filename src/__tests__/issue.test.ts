@@ -18,6 +18,9 @@ const mockTeams = vi.fn();
 const mockTeam = vi.fn();
 const mockUsers = vi.fn();
 const mockProjects = vi.fn();
+const mockCreateTemplate = vi.fn();
+const mockDeleteTemplate = vi.fn();
+const mockTemplates = vi.fn();
 
 // Mock @linear/sdk
 vi.mock("@linear/sdk", () => ({
@@ -34,6 +37,9 @@ vi.mock("@linear/sdk", () => ({
     team: mockTeam,
     users: mockUsers,
     projects: mockProjects,
+    createTemplate: mockCreateTemplate,
+    deleteTemplate: mockDeleteTemplate,
+    get templates() { return mockTemplates(); },
   })),
 }));
 
@@ -291,6 +297,116 @@ describe("issue commands", () => {
       expect(output.parent.id).toBe("MAIN-10");
       expect(output.children).toHaveLength(1);
       expect(output.comments).toHaveLength(1);
+    });
+
+    it("fetches multiple issues and returns results array", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      const makeIssueMock = (id: string, title: string) => ({
+        identifier: id,
+        title,
+        description: null,
+        priority: 0,
+        priorityLabel: "No priority",
+        dueDate: null,
+        estimate: null,
+        url: `https://linear.app/test/issue/${id}`,
+        state: Promise.resolve({ name: "Todo", type: "unstarted" }),
+        assignee: Promise.resolve(null),
+        delegate: Promise.resolve(null),
+        labels: () => Promise.resolve({ nodes: [] }),
+        parent: Promise.resolve(null),
+        children: () => Promise.resolve({ nodes: [] }),
+        comments: () => Promise.resolve({ nodes: [] }),
+        relations: () => Promise.resolve({ nodes: [] }),
+      });
+
+      mockIssue
+        .mockResolvedValueOnce(makeIssueMock("MAIN-42", "First issue"))
+        .mockResolvedValueOnce(makeIssueMock("MAIN-43", "Second issue"));
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "get", "MAIN-42", "MAIN-43",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockIssue).toHaveBeenCalledWith("MAIN-42");
+      expect(mockIssue).toHaveBeenCalledWith("MAIN-43");
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(2);
+      expect(output.results[0].id).toBe("MAIN-42");
+      expect(output.results[1].id).toBe("MAIN-43");
+    });
+
+    it("returns valid issues and warnings when some IDs fail", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockIssue
+        .mockResolvedValueOnce({
+          identifier: "MAIN-42",
+          title: "Valid issue",
+          description: null,
+          priority: 0,
+          priorityLabel: "No priority",
+          dueDate: null,
+          estimate: null,
+          url: "https://linear.app/test/issue/MAIN-42",
+          state: Promise.resolve({ name: "Todo", type: "unstarted" }),
+          assignee: Promise.resolve(null),
+          delegate: Promise.resolve(null),
+          labels: () => Promise.resolve({ nodes: [] }),
+          parent: Promise.resolve(null),
+          children: () => Promise.resolve({ nodes: [] }),
+          comments: () => Promise.resolve({ nodes: [] }),
+          relations: () => Promise.resolve({ nodes: [] }),
+        })
+        .mockRejectedValueOnce(new Error("Entity not found: MAIN-99"));
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "get", "MAIN-42", "MAIN-99",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(1);
+      expect(output.results[0].id).toBe("MAIN-42");
+      expect(output.warnings).toHaveLength(1);
+      expect(output.warnings[0]).toContain("MAIN-99");
     });
   });
 
@@ -1119,6 +1235,367 @@ describe("issue commands", () => {
           "--project", "nonexistent",
         ])
       ).rejects.toThrow(ValidationError);
+    });
+  });
+
+  describe("issue schedule create", () => {
+    it("creates a recurring issue template with weekly schedule", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-1", name: "Daily Standup" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Daily Standup",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockCreateTemplate).toHaveBeenCalledOnce();
+      const callArg = mockCreateTemplate.mock.calls[0][0];
+      expect(callArg.type).toBe("recurringIssue");
+      expect(callArg.name).toBe("Daily Standup");
+      expect(callArg.teamId).toBe("team-1");
+
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.title).toBe("Daily Standup");
+      expect(templateData.schedule.type).toBe("weeks");
+      expect(templateData.schedule.interval).toBe(1);
+      expect(templateData.schedule.startAt).toBe("2026-03-01");
+
+      const output = JSON.parse(logs[0]);
+      expect(output.id).toBe("template-1");
+      expect(output.name).toBe("Daily Standup");
+    });
+
+    it("respects --interval and --frequency daily flags", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-2", name: "Morning Check-in" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Morning Check-in",
+          "--team", "Engineering",
+          "--frequency", "daily",
+          "--interval", "2",
+          "--start-at", "2026-03-01",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const callArg = mockCreateTemplate.mock.lastCall![0];
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.schedule.type).toBe("days");
+      expect(templateData.schedule.interval).toBe(2);
+    });
+  });
+
+  describe("issue schedule list", () => {
+    it("lists recurring issue templates filtered by team", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTemplates.mockResolvedValue([
+        { id: "t-1", name: "Weekly Sync", type: "recurringIssue", templateData: "{}", team: Promise.resolve({ id: "team-1" }) },
+        { id: "t-2", name: "Regular Template", type: "issue", templateData: "{}", team: Promise.resolve(null) },
+        { id: "t-3", name: "Daily Report", type: "recurringIssue", templateData: "{}", team: Promise.resolve({ id: "team-1" }) },
+      ]);
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "list",
+          "--team", "Engineering",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(2);
+      expect(output.results[0].id).toBe("t-1");
+      expect(output.results[1].id).toBe("t-3");
+    });
+
+    it("lists all recurring issue templates when no team filter", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTemplates.mockResolvedValue([
+        { id: "t-1", name: "Weekly Sync", type: "recurringIssue", templateData: "{}", team: Promise.resolve(null) },
+        { id: "t-2", name: "Regular Template", type: "issue", templateData: "{}", team: Promise.resolve(null) },
+      ]);
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "list",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(1);
+      expect(output.results[0].id).toBe("t-1");
+    });
+  });
+
+  describe("issue schedule delete", () => {
+    it("deletes a recurring issue template by id", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockDeleteTemplate.mockResolvedValue({ success: true });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "delete", "template-uuid-123",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockDeleteTemplate).toHaveBeenCalledWith("template-uuid-123");
+      const output = JSON.parse(logs[0]);
+      expect(output.status).toBe("deleted");
+    });
+  });
+
+  describe("issue schedule create validation and optional fields", () => {
+    it("throws ValidationError for invalid interval", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { ValidationError } = await import("../errors.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      await expect(
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Bad interval",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+          "--interval", "0",
+        ])
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("throws ValidationError for invalid priority", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { ValidationError } = await import("../errors.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      await expect(
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Bad priority",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+          "--priority", "5",
+        ])
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("resolves --assignee and adds assigneeId to templateData", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockUsers.mockResolvedValue({
+        nodes: [{ id: "user-1", name: "Alice", email: "alice@example.com", displayName: "Alice" }],
+      });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-1", name: "Team Standup" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Team Standup",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+          "--assignee", "Alice",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const callArg = mockCreateTemplate.mock.lastCall![0];
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.assigneeId).toBe("user-1");
+    });
+
+    it("resolves --state and adds stateId to templateData", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      // Pre-populate state cache so resolveState doesn't need to fetch
+      const cacheData = {
+        teams: {
+          MAIN: {
+            states: { "Todo": "state-1", "In Progress": "state-2" },
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+      writeFileSync(join(testDir, "test-bot.cache.json"), JSON.stringify(cacheData));
+
+      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
+      mockCreateTemplate.mockResolvedValue({
+        success: true,
+        template: { id: "template-1", name: "Weekly Review" },
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "schedule", "create",
+          "--title", "Weekly Review",
+          "--team", "Engineering",
+          "--frequency", "weekly",
+          "--start-at", "2026-03-01",
+          "--state", "In Progress",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const callArg = mockCreateTemplate.mock.lastCall![0];
+      const templateData = JSON.parse(callArg.templateData);
+      expect(templateData.stateId).toBe("state-2");
     });
   });
 });
