@@ -44,7 +44,7 @@ linear comment update <comment-id> --body-file /tmp/updated.md --agent <id>
 ```bash
 linear inbox --agent <id> --format json
 linear inbox --category assignments --agent <id> --format json
-# categories: assignments, mentions, statusChanges, commentsAndReplies
+# categories: assignments, mentions, statusChanges, commentsAndReplies, reactions, reviews, appsAndIntegrations, triage, system
 linear inbox dismiss <notification-id> --agent <id>
 linear inbox dismiss-all --agent <id>
 ```
