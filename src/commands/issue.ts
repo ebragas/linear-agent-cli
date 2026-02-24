@@ -242,57 +242,74 @@ export function registerIssueCommands(program: Command): void {
   issue
     .command("get")
     .description("Get full issue details")
-    .argument("<id>", "Issue identifier (e.g., MAIN-42)")
-    .action(async (id, _opts, cmd) => {
+    .argument("<ids...>", "Issue identifier(s) (e.g., MAIN-42 MAIN-43)")
+    .action(async (ids: string[], _opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
       await runWithClient(globalOpts, async (client) => {
         const format = getFormat(globalOpts.format);
 
-        const issueObj = await client.issue(id);
-
-        const [state, assignee, delegate, labels, parent, children, comments, relations] =
-          await Promise.all([
-            issueObj.state,
-            issueObj.assignee,
-            issueObj.delegate,
-            issueObj.labels(),
-            issueObj.parent,
-            issueObj.children(),
-            issueObj.comments(),
-            issueObj.relations(),
-          ]);
-
-        const result = {
-          id: issueObj.identifier,
-          title: issueObj.title,
-          description: issueObj.description ?? null,
-          state: state?.name ?? null,
-          stateType: state?.type ?? null,
-          assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
-          delegate: delegate ? { id: delegate.id, name: delegate.name } : null,
-          labels: labels.nodes.map((l) => ({ id: l.id, name: l.name })),
-          priority: issueObj.priority,
-          priorityLabel: issueObj.priorityLabel,
-          parent: parent ? { id: parent.identifier, title: parent.title } : null,
-          children: children.nodes.map((c) => ({
-            id: c.identifier,
-            title: c.title,
-          })),
-          relations: relations.nodes.map((r) => ({
-            type: r.type,
-            relatedIssueId: (r as Record<string, unknown>).relatedIssueId ?? null,
-          })),
-          comments: comments.nodes.map((c) => ({
-            id: c.id,
-            body: c.body,
-            createdAt: c.createdAt,
-          })),
-          dueDate: issueObj.dueDate ?? null,
-          estimate: issueObj.estimate ?? null,
-          url: issueObj.url,
+        const fetchIssue = async (id: string) => {
+          const issueObj = await client.issue(id);
+          const [state, assignee, delegate, labels, parent, children, comments, relations] =
+            await Promise.all([
+              issueObj.state,
+              issueObj.assignee,
+              issueObj.delegate,
+              issueObj.labels(),
+              issueObj.parent,
+              issueObj.children(),
+              issueObj.comments(),
+              issueObj.relations(),
+            ]);
+          return {
+            id: issueObj.identifier,
+            title: issueObj.title,
+            description: issueObj.description ?? null,
+            state: state?.name ?? null,
+            stateType: state?.type ?? null,
+            assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
+            delegate: delegate ? { id: delegate.id, name: delegate.name } : null,
+            labels: labels.nodes.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })),
+            priority: issueObj.priority,
+            priorityLabel: issueObj.priorityLabel,
+            parent: parent ? { id: parent.identifier, title: parent.title } : null,
+            children: children.nodes.map((c: { identifier: string; title: string }) => ({
+              id: c.identifier,
+              title: c.title,
+            })),
+            relations: relations.nodes.map((r: Record<string, unknown>) => ({
+              type: r.type,
+              relatedIssueId: r.relatedIssueId ?? null,
+            })),
+            comments: comments.nodes.map((c: { id: string; body: string; createdAt: string }) => ({
+              id: c.id,
+              body: c.body,
+              createdAt: c.createdAt,
+            })),
+            dueDate: issueObj.dueDate ?? null,
+            estimate: issueObj.estimate ?? null,
+            url: issueObj.url,
+          };
         };
 
-        printResult({ data: result }, format);
+        if (ids.length === 1) {
+          const result = await fetchIssue(ids[0]);
+          printResult({ data: result }, format);
+        } else {
+          const settled = await Promise.allSettled(ids.map(fetchIssue));
+          const results: Awaited<ReturnType<typeof fetchIssue>>[] = [];
+          const warnings: string[] = [];
+          for (let i = 0; i < settled.length; i++) {
+            const outcome = settled[i];
+            if (outcome.status === "fulfilled") {
+              results.push(outcome.value);
+            } else {
+              const msg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+              warnings.push(`${ids[i]}: ${msg}`);
+            }
+          }
+          printResult({ data: results, warnings: warnings.length ? warnings : undefined }, format);
+        }
       });
     });
 
