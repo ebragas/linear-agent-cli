@@ -44,7 +44,9 @@ Run on each cycle to discover and process work:
 AGENT="your-agent-id"
 
 # 1. Check inbox for assignments, mentions, and delegations
-linear inbox --agent $AGENT --format json
+# Note the notification ID — you'll dismiss it specifically when done.
+INBOX=$(linear inbox --agent $AGENT --format json)
+NOTIF_ID=$(echo $INBOX | jq -r '.results[] | select(.issue.identifier == "MAIN-42") | .id')
 
 # 2. Check issues delegated to you
 linear delegate list --agent $AGENT --format json
@@ -69,8 +71,8 @@ else
   linear comment add MAIN-42 --body "Completed. Ready for review." --agent $AGENT
 fi
 
-# 5. Dismiss processed notifications
-linear inbox dismiss-all --agent $AGENT
+# 5. Dismiss the notification for this work item specifically
+linear inbox dismiss $NOTIF_ID --agent $AGENT
 ```
 
 ## Command Reference
