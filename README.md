@@ -174,6 +174,27 @@ linear comment add MAIN-42 --body "Done. Ready for review." --agent $AGENT
 linear inbox dismiss-all --agent $AGENT
 ```
 
+## OpenClaw Skill
+
+An [OpenClaw](https://openclaw.dev) skill for using this CLI with AI agents lives at [`skills/linear-cli/SKILL.md`](skills/linear-cli/SKILL.md). The skill teaches agents the command patterns, JSON output format, multi-line content handling, and error recovery for this CLI.
+
+### Installation
+
+Install via symlink so skill updates apply automatically whenever you pull new versions of this repo:
+
+```bash
+# From your OpenClaw workspace root
+ln -s /path/to/linear-agent-cli/skills/linear-cli workspace/skills/linear-cli
+```
+
+Or using an absolute path from the repo directory:
+
+```bash
+ln -s "$(pwd)/skills/linear-cli" /path/to/your-workspace/workspace/skills/linear-cli
+```
+
+The skill requires the `linear` binary to be in `$PATH`. OpenClaw will not load it if the binary is missing.
+
 ## Development
 
 ```bash

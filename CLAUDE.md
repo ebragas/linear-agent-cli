@@ -50,6 +50,10 @@ Always run tests before committing:
 npm test
 ```
 
+## OpenClaw Skill
+
+The `skills/linear-cli/SKILL.md` file teaches AI agents how to use this CLI via OpenClaw. When you modify CLI commands — flags, output format, state names, error codes, or behavior — update `skills/linear-cli/SKILL.md` to match.
+
 ## Code Style
 
 Follow existing patterns in the codebase.
