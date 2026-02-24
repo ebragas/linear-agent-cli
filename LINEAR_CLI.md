@@ -316,6 +316,15 @@ linear project list       List projects
   --team <team>                 Filter by team
 
 linear project get <id>   Get project details
+
+linear project update <id>
+  --name <text>                 Rename the project
+  --description <text>          Set description (markdown)
+  --description-file <path>     Read description from file
+  --start-date <date>           Start date (YYYY-MM-DD, or "null" to clear)
+  --target-date <date>          Target date (YYYY-MM-DD, or "null" to clear)
+  --lead <user>                 Project lead by name, email, or UUID ("null" to clear)
+  --priority <0-4>              Priority (0=none, 1=urgent, 2=high, 3=normal, 4=low)
 ```
 
 ### `attachment` — External URL Attachments

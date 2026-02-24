@@ -224,6 +224,43 @@ describe("project commands", () => {
       );
     });
 
+    it('clears start-date when passed "null"', async () => {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+
+      mockUpdateProject.mockResolvedValue({
+        success: true,
+        project: Promise.resolve({ id: "proj-uuid-1", name: "P", url: null }),
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "update", "proj-uuid-1",
+          "--start-date", "null",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockUpdateProject).toHaveBeenCalledWith(
+        "proj-uuid-1",
+        expect.objectContaining({ startDate: null })
+      );
+    });
+
     it('clears target-date when passed "null"', async () => {
       vi.resetModules();
       const { registerProjectCommands } = await import("../commands/project.js");
@@ -337,6 +374,47 @@ describe("project commands", () => {
         "proj-uuid-1",
         expect.objectContaining({ leadId: null })
       );
+    });
+
+    it("rejects invalid priority values", async () => {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const errors: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errors.push(args.join(" "));
+
+      const origExit = process.exit;
+      let exitCode: number | undefined;
+      (process as { exit: (code?: number) => never }).exit = (code?: number) => {
+        exitCode = code;
+        throw new Error(`process.exit(${code})`);
+      };
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "update", "proj-uuid-1",
+          "--priority", "foo",
+        ]);
+      } catch {
+        // expected
+      } finally {
+        console.error = origErr;
+        (process as { exit: (code?: number) => never }).exit = origExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errors[0]).toContain("Invalid value for --priority");
+      expect(mockUpdateProject).not.toHaveBeenCalled();
     });
 
     it("sets priority", async () => {

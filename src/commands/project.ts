@@ -109,7 +109,12 @@ export function registerProjectCommands(program: Command): void {
         }
 
         if (opts.priority !== undefined) {
-          input.priority = parseInt(opts.priority, 10);
+          const priority = parseInt(opts.priority, 10);
+          if (isNaN(priority) || priority < 0 || priority > 4) {
+            console.error(`Invalid value for --priority: "${opts.priority}". Expected an integer between 0 and 4.`);
+            process.exit(1);
+          }
+          input.priority = priority;
         }
 
         const payload = await client.updateProject(id, input);
