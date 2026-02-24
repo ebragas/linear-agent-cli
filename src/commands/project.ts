@@ -55,6 +55,7 @@ export function registerProjectCommands(program: Command): void {
               id: p.id,
               name: p.name,
               description: p.description ?? null,
+              content: p.content ?? null,
               state: p.state,
               progress: p.progress,
               startDate: p.startDate ?? null,
@@ -71,8 +72,10 @@ export function registerProjectCommands(program: Command): void {
     .description("Update project metadata")
     .argument("<id>", "Project ID")
     .option("--name <text>", "New project name")
-    .option("--description <text>", "Project description (markdown)")
+    .option("--description <text>", "Project description (markdown, 255-char limit)")
     .option("--description-file <path>", "Read description from file")
+    .option("--content <text>", "Project overview content (long-form markdown)")
+    .option("--content-file <path>", "Read project overview content from file")
     .option("--start-date <date>", 'Start date (YYYY-MM-DD, or "null" to clear)')
     .option("--target-date <date>", 'Target date (YYYY-MM-DD, or "null" to clear)')
     .option("--lead <user>", 'Project lead (name, email, or "null" to clear)')
@@ -90,6 +93,12 @@ export function registerProjectCommands(program: Command): void {
           input.description = readFileSync(opts.descriptionFile, "utf-8");
         } else if (opts.description) {
           input.description = opts.description;
+        }
+
+        if (opts.contentFile) {
+          input.content = readFileSync(opts.contentFile, "utf-8");
+        } else if (opts.content) {
+          input.content = opts.content;
         }
 
         if (opts.startDate !== undefined) {

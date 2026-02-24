@@ -453,5 +453,124 @@ describe("project commands", () => {
         expect.objectContaining({ priority: 2 })
       );
     });
+
+    it("updates content from --content flag", async () => {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+
+      mockUpdateProject.mockResolvedValue({
+        success: true,
+        project: Promise.resolve({ id: "proj-uuid-1", name: "P", url: null }),
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "update", "proj-uuid-1",
+          "--content", "# My Project Spec\n\nLong form content here.",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockUpdateProject).toHaveBeenCalledWith(
+        "proj-uuid-1",
+        expect.objectContaining({ content: "# My Project Spec\n\nLong form content here." })
+      );
+    });
+
+    it("updates content from --content-file", async () => {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+
+      const contentFile = join(testDir, "spec.md");
+      writeFileSync(contentFile, "# Project Spec\n\nDetailed content from file.");
+
+      mockUpdateProject.mockResolvedValue({
+        success: true,
+        project: Promise.resolve({ id: "proj-uuid-1", name: "P", url: null }),
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "update", "proj-uuid-1",
+          "--content-file", contentFile,
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockUpdateProject).toHaveBeenCalledWith(
+        "proj-uuid-1",
+        expect.objectContaining({ content: "# Project Spec\n\nDetailed content from file." })
+      );
+    });
+  });
+
+  describe("project get", () => {
+    it("includes content field in output", async () => {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+
+      mockProject.mockResolvedValue({
+        id: "proj-uuid-1",
+        name: "My Project",
+        description: "Short description",
+        content: "# Overview\n\nLong-form project content.",
+        state: "started",
+        progress: 0.5,
+        startDate: null,
+        targetDate: null,
+      });
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "get", "proj-uuid-1",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.content).toBe("# Overview\n\nLong-form project content.");
+    });
   });
 });
