@@ -84,6 +84,7 @@ linear user list --type app --agent <id> --format json   # agents only
 linear user search "eve" --agent <id> --format json
 linear team list --agent <id> --format json
 linear team members Main --agent <id> --format json
+linear project create --name "Q2 Delivery" --team Main --description "Cross-team delivery plan" --agent <id>
 linear project list --team Main --agent <id> --format json
 linear state list --team Main --agent <id> --format json  # check valid state names before transitioning
 ```
