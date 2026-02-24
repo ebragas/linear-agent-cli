@@ -1,5 +1,5 @@
 ---
-name: linear_cli
+name: linear-cli
 description: Manage Linear issues, comments, notifications, and agent workflows via the @ebragas/linear-cli CLI.
 metadata:
   openclaw:
@@ -54,8 +54,20 @@ linear issue transition MAIN-42 "In Progress" --agent $AGENT
 linear comment add MAIN-42 --body "Starting work on this." --agent $AGENT
 
 # 4. Complete and hand off
+# First, check who should review: the issue's assignee is the human owner and
+# the natural reviewer. Get their display name from the issue details.
+ISSUE=$(linear issue get MAIN-42 --agent $AGENT --format json)
+ASSIGNEE=$(echo $ISSUE | jq -r '.assignee.name // empty')
+
 linear issue transition MAIN-42 "Awaiting Review" --agent $AGENT
-linear comment add MAIN-42 --body "Completed. Ready for review." --agent $AGENT
+
+# If there's an assignee, @mention them so they're notified.
+# If no assignee, omit the mention — no specific reviewer to notify.
+if [ -n "$ASSIGNEE" ]; then
+  linear comment add MAIN-42 --body "Completed. @${ASSIGNEE} ready for your review." --agent $AGENT
+else
+  linear comment add MAIN-42 --body "Completed. Ready for review." --agent $AGENT
+fi
 
 # 5. Dismiss processed notifications
 linear inbox dismiss-all --agent $AGENT
@@ -166,6 +178,8 @@ linear delegate remove MAIN-42 --agent <id>
 
 ### Discovery Commands
 
+To @mention someone in a comment, use `@DisplayName` in the body text. Linear resolves mentions for users and agents with `app:mentionable` scope. To find the right display name:
+
 ```bash
 # List all users and agents in workspace
 linear user list --agent <id> --format json
@@ -173,6 +187,10 @@ linear user list --type app --agent <id> --format json  # agents only
 
 # Find a user or agent by name/email
 linear user search "eve" --agent <id> --format json
+
+# The issue's assignee (human owner) is usually the right reviewer —
+# get their name from issue details:
+linear issue get MAIN-42 --agent <id> --format json  # check .assignee.name
 
 # List teams
 linear team list --agent <id> --format json
