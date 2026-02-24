@@ -50,7 +50,8 @@ export function registerCommentCommands(program: Command): void {
           body = readFileSync(opts.bodyFile, "utf-8");
         } else if (!body && !process.stdin.isTTY) {
           try {
-            body = readFileSync(0, "utf-8").trim();
+            const stdinContent = readFileSync(0, "utf-8").trim();
+            if (stdinContent) body = stdinContent;
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.error(`Error: Failed to read from stdin: ${message}`);
@@ -100,7 +101,8 @@ export function registerCommentCommands(program: Command): void {
           body = readFileSync(opts.bodyFile, "utf-8");
         } else if (!body && !process.stdin.isTTY) {
           try {
-            body = readFileSync(0, "utf-8").trim();
+            const stdinContent = readFileSync(0, "utf-8").trim();
+            if (stdinContent) body = stdinContent;
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.error(`Error: Failed to read from stdin: ${message}`);
