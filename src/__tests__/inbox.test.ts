@@ -62,12 +62,14 @@ describe("inbox commands", () => {
             type: "issueAssignedToYou",
             createdAt: "2026-02-01T00:00:00Z",
             archivedAt: null,
+            issue: { id: "uuid-issue-1", identifier: "MAIN-25", title: "Test issue", url: "https://linear.app/test/issue/MAIN-25" },
           },
           {
             id: "notif-2",
             type: "issueMention",
             createdAt: "2026-02-02T00:00:00Z",
             archivedAt: null,
+            issue: null,
           },
         ],
       });
@@ -107,6 +109,8 @@ describe("inbox commands", () => {
       expect(output.results).toHaveLength(2);
       expect(output.results[0].id).toBe("notif-1");
       expect(output.results[0].type).toBe("issueAssignedToYou");
+      expect(output.results[0].issue).toEqual({ id: "uuid-issue-1", identifier: "MAIN-25", title: "Test issue", url: "https://linear.app/test/issue/MAIN-25" });
+      expect(output.results[1].issue).toBeNull();
     });
 
     it("includes archived when --include-archived is set", async () => {
@@ -122,6 +126,7 @@ describe("inbox commands", () => {
             type: "issueAssignedToYou",
             createdAt: "2026-02-01T00:00:00Z",
             archivedAt: "2026-02-01T12:00:00Z",
+            issue: null,
           },
         ],
       });
@@ -214,9 +219,9 @@ describe("inbox commands", () => {
 
       mockNotifications.mockResolvedValueOnce({
         nodes: [
-          { id: "notif-a", type: "issueAssignedToYou", createdAt: "2026-02-01T00:00:00Z", archivedAt: null },
-          { id: "notif-b", type: "issueMention", createdAt: "2026-02-02T00:00:00Z", archivedAt: null },
-          { id: "notif-c", type: "issueStatusChanged", createdAt: "2026-02-03T00:00:00Z", archivedAt: null },
+          { id: "notif-a", type: "issueAssignedToYou", createdAt: "2026-02-01T00:00:00Z", archivedAt: null, issue: null },
+          { id: "notif-b", type: "issueMention", createdAt: "2026-02-02T00:00:00Z", archivedAt: null, issue: null },
+          { id: "notif-c", type: "issueStatusChanged", createdAt: "2026-02-03T00:00:00Z", archivedAt: null, issue: null },
         ],
       });
 

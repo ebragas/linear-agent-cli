@@ -92,11 +92,15 @@ export function registerInboxCommands(program: Command): void {
 
         const results = [];
         for (const n of notifications) {
+          const issue = await n.issue;
           results.push({
             id: n.id,
             type: n.type,
             createdAt: n.createdAt,
             archivedAt: n.archivedAt ?? null,
+            issue: issue
+              ? { id: issue.id, identifier: issue.identifier, title: issue.title, url: issue.url }
+              : null,
           });
         }
 
