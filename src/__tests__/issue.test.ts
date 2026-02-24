@@ -292,6 +292,116 @@ describe("issue commands", () => {
       expect(output.children).toHaveLength(1);
       expect(output.comments).toHaveLength(1);
     });
+
+    it("fetches multiple issues and returns results array", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      const makeIssueMock = (id: string, title: string) => ({
+        identifier: id,
+        title,
+        description: null,
+        priority: 0,
+        priorityLabel: "No priority",
+        dueDate: null,
+        estimate: null,
+        url: `https://linear.app/test/issue/${id}`,
+        state: Promise.resolve({ name: "Todo", type: "unstarted" }),
+        assignee: Promise.resolve(null),
+        delegate: Promise.resolve(null),
+        labels: () => Promise.resolve({ nodes: [] }),
+        parent: Promise.resolve(null),
+        children: () => Promise.resolve({ nodes: [] }),
+        comments: () => Promise.resolve({ nodes: [] }),
+        relations: () => Promise.resolve({ nodes: [] }),
+      });
+
+      mockIssue
+        .mockResolvedValueOnce(makeIssueMock("MAIN-42", "First issue"))
+        .mockResolvedValueOnce(makeIssueMock("MAIN-43", "Second issue"));
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "get", "MAIN-42", "MAIN-43",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      expect(mockIssue).toHaveBeenCalledWith("MAIN-42");
+      expect(mockIssue).toHaveBeenCalledWith("MAIN-43");
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(2);
+      expect(output.results[0].id).toBe("MAIN-42");
+      expect(output.results[1].id).toBe("MAIN-43");
+    });
+
+    it("returns valid issues and warnings when some IDs fail", async () => {
+      vi.resetModules();
+      const { registerIssueCommands } = await import("../commands/issue.js");
+      const { Command } = await import("commander");
+
+      mockIssue
+        .mockResolvedValueOnce({
+          identifier: "MAIN-42",
+          title: "Valid issue",
+          description: null,
+          priority: 0,
+          priorityLabel: "No priority",
+          dueDate: null,
+          estimate: null,
+          url: "https://linear.app/test/issue/MAIN-42",
+          state: Promise.resolve({ name: "Todo", type: "unstarted" }),
+          assignee: Promise.resolve(null),
+          delegate: Promise.resolve(null),
+          labels: () => Promise.resolve({ nodes: [] }),
+          parent: Promise.resolve(null),
+          children: () => Promise.resolve({ nodes: [] }),
+          comments: () => Promise.resolve({ nodes: [] }),
+          relations: () => Promise.resolve({ nodes: [] }),
+        })
+        .mockRejectedValueOnce(new Error("Entity not found: MAIN-99"));
+
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerIssueCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "issue", "get", "MAIN-42", "MAIN-99",
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(logs[0]);
+      expect(output.results).toHaveLength(1);
+      expect(output.results[0].id).toBe("MAIN-42");
+      expect(output.warnings).toHaveLength(1);
+      expect(output.warnings[0]).toContain("MAIN-99");
+    });
   });
 
   describe("issue create", () => {
