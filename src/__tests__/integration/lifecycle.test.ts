@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync } from "child_process";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -231,6 +231,33 @@ describe.skipIf(!INTEGRATION)("integration: lifecycle", () => {
       );
       expect(removeOutput.status).toBe("removed");
       expect(removeOutput.attachmentId).toBe(createdAttachmentId);
+    }
+  });
+
+  it("attachment upload → creates attachment on issue", () => {
+    if (!createdIssueId) return;
+
+    // Create a temp file to upload
+    const uploadFilePath = join(tmpdir(), "integration-test-upload.txt");
+    writeFileSync(uploadFilePath, "Integration test file content for Linear CLI upload.");
+
+    try {
+      const output = JSON.parse(
+        run(
+          `attachment upload ${uploadFilePath} --issue ${createdIssueId} --title "Integration upload test"`
+        )
+      );
+      expect(output.id).toBeTruthy();
+      expect(output.url).toMatch(/^https?:\/\//);
+      expect(output.issueId).toBe(createdIssueId);
+      expect(output.title).toBe("Integration upload test");
+
+      // Clean up the uploaded attachment
+      if (output.id) {
+        run(`attachment remove ${output.id}`);
+      }
+    } finally {
+      try { unlinkSync(uploadFilePath); } catch { /* best effort */ }
     }
   });
 
