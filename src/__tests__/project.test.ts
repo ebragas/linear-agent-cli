@@ -5,15 +5,19 @@ import { tmpdir } from "os";
 import { writeCredentials } from "../credentials.js";
 import type { Credentials } from "../credentials.js";
 
+const mockCreateProject = vi.fn();
 const mockUpdateProject = vi.fn();
 const mockProject = vi.fn();
 const mockProjects = vi.fn();
+const mockTeams = vi.fn();
 const mockUsers = vi.fn();
 
 vi.mock("@linear/sdk", () => ({
   LinearClient: vi.fn().mockImplementation(() => ({
+    createProject: mockCreateProject,
     project: mockProject,
     projects: mockProjects,
+    teams: mockTeams,
     updateProject: mockUpdateProject,
     users: mockUsers,
   })),
@@ -43,9 +47,11 @@ describe("project commands", () => {
     origStdinIsTTY = process.stdin.isTTY;
     (process.stdin as { isTTY: boolean | undefined }).isTTY = true;
 
+    mockCreateProject.mockReset();
     mockUpdateProject.mockReset();
     mockProject.mockReset();
     mockProjects.mockReset();
+    mockTeams.mockReset();
     mockUsers.mockReset();
   });
 
@@ -571,6 +577,118 @@ describe("project commands", () => {
 
       const output = JSON.parse(logs[0]);
       expect(output.content).toBe("# Overview\n\nLong-form project content.");
+    });
+  });
+
+  describe("project create", () => {
+    async function runCreate(args: string[]) {
+      vi.resetModules();
+      const { registerProjectCommands } = await import("../commands/project.js");
+      const { Command } = await import("commander");
+      const program = new Command();
+      program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
+      registerProjectCommands(program);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...a: unknown[]) => logs.push(a.join(" "));
+      try {
+        await program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "project", "create",
+          ...args,
+        ]);
+      } finally {
+        console.log = origLog;
+      }
+      return JSON.parse(logs[0]);
+    }
+
+    it("creates a project by team name", async () => {
+      mockTeams.mockResolvedValueOnce({
+        nodes: [{ id: "team-uuid-1" }],
+      });
+      mockCreateProject.mockResolvedValueOnce({
+        success: true,
+        projectId: "proj-uuid-1",
+        project: Promise.resolve({
+          id: "proj-uuid-1",
+          name: "My Project",
+          url: "https://linear.app/test/project/proj-1",
+        }),
+      });
+
+      const output = await runCreate(["--name", "My Project", "--team", "Main"]);
+
+      expect(mockTeams).toHaveBeenCalledWith({
+        filter: { name: { eqIgnoreCase: "Main" } },
+      });
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "My Project", teamIds: ["team-uuid-1"] })
+      );
+      expect(output.id).toBe("proj-uuid-1");
+      expect(output.name).toBe("My Project");
+      expect(output.url).toBe("https://linear.app/test/project/proj-1");
+    });
+
+    it("accepts a team UUID directly without resolving", async () => {
+      const teamUuid = "aaaabbbb-cccc-dddd-eeee-ffffaaaabbbb";
+      mockCreateProject.mockResolvedValueOnce({
+        success: true,
+        projectId: "proj-uuid-2",
+        project: Promise.resolve({
+          id: "proj-uuid-2",
+          name: "UUID Project",
+          url: "https://linear.app/test/project/proj-2",
+        }),
+      });
+
+      await runCreate(["--name", "UUID Project", "--team", teamUuid]);
+
+      expect(mockTeams).not.toHaveBeenCalled();
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ teamIds: [teamUuid] })
+      );
+    });
+
+    it("passes optional description, start-date, and target-date", async () => {
+      mockTeams.mockResolvedValueOnce({ nodes: [{ id: "team-uuid-1" }] });
+      mockCreateProject.mockResolvedValueOnce({
+        success: true,
+        projectId: "proj-uuid-3",
+        project: Promise.resolve({ id: "proj-uuid-3", name: "Full Project", url: null }),
+      });
+
+      await runCreate([
+        "--name", "Full Project",
+        "--team", "Main",
+        "--description", "A detailed description",
+        "--start-date", "2026-03-01",
+        "--target-date", "2026-06-30",
+      ]);
+
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Full Project",
+          teamIds: ["team-uuid-1"],
+          description: "A detailed description",
+          startDate: "2026-03-01",
+          targetDate: "2026-06-30",
+        })
+      );
+    });
+
+    it("throws when team name does not match any team", async () => {
+      mockTeams.mockResolvedValueOnce({ nodes: [] });
+
+      await expect(
+        runCreate(["--name", "Orphan Project", "--team", "NonExistentTeam"])
+      ).rejects.toThrow('No team matching "NonExistentTeam"');
+
+      expect(mockCreateProject).not.toHaveBeenCalled();
     });
   });
 });

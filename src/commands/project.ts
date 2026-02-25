@@ -1,13 +1,62 @@
 import { Command } from "commander";
 import { readFileSync } from "fs";
+import { LinearClient } from "@linear/sdk";
 import { runWithClient } from "../context.js";
 import { getFormat, printResult } from "../output.js";
 import { resolveUser } from "../resolvers.js";
+import { ValidationError } from "../errors.js";
+
+async function resolveTeam(client: LinearClient, team: string): Promise<string> {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team)) {
+    return team;
+  }
+  const teams = await client.teams({ filter: { name: { eqIgnoreCase: team } } });
+  if (!teams.nodes[0]) throw new ValidationError(`No team matching "${team}"`);
+  return teams.nodes[0].id;
+}
 
 export function registerProjectCommands(program: Command): void {
   const project = program
     .command("project")
     .description("Project queries");
+
+  project
+    .command("create")
+    .description("Create a new project")
+    .requiredOption("--name <text>", "Project name")
+    .requiredOption("--team <team>", "Team name or ID")
+    .option("--description <text>", "Project description")
+    .option("--start-date <date>", "Planned start date (YYYY-MM-DD)")
+    .option("--target-date <date>", "Planned target date (YYYY-MM-DD)")
+    .action(async (opts, cmd) => {
+      const globalOpts = cmd.optsWithGlobals();
+      await runWithClient(globalOpts, async (client) => {
+        const teamId = await resolveTeam(client, opts.team);
+
+        const input: Record<string, unknown> = {
+          name: opts.name,
+          teamIds: [teamId],
+        };
+        if (opts.description) input.description = opts.description;
+        if (opts.startDate) input.startDate = opts.startDate;
+        if (opts.targetDate) input.targetDate = opts.targetDate;
+
+        const payload = await client.createProject(input as Parameters<typeof client.createProject>[0]);
+        const created = await payload.project;
+
+        const format = getFormat(globalOpts.format);
+        printResult(
+          {
+            data: {
+              id: created?.id ?? payload.projectId,
+              name: created?.name ?? opts.name,
+              url: created?.url ?? null,
+            },
+          },
+          format,
+        );
+      });
+    });
 
   project
     .command("list")

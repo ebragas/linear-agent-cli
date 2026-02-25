@@ -321,6 +321,21 @@ describe.skipIf(!INTEGRATION)("integration: lifecycle", () => {
     expect(output.results).toBeDefined();
   });
 
+  it("project create → get → archive", () => {
+    const createOutput = JSON.parse(
+      run(`project create --name "Integration test project" --team ${TEST_TEAM} --description "Created by integration test" --target-date 2026-12-31`)
+    );
+    expect(createOutput.id).toBeTruthy();
+    expect(createOutput.name).toBe("Integration test project");
+    expect(createOutput.url).toMatch(/^https?:\/\//);
+
+    const getOutput = JSON.parse(run(`project get ${createOutput.id}`));
+    expect(getOutput.name).toBe("Integration test project");
+    expect(getOutput.description).toBe("Created by integration test");
+
+    // Note: no project archive/delete command in CLI yet; project left in workspace
+  });
+
   it("search finds issues", () => {
     const output = JSON.parse(run('issue search "integration test"'));
     expect(output.results).toBeDefined();
