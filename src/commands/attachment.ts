@@ -115,7 +115,13 @@ export function registerAttachmentCommands(program: Command): void {
         }
 
         const resolvedPath = resolve(filePath);
-        const stat = statSync(resolvedPath);
+        let stat: ReturnType<typeof statSync>;
+        try {
+          stat = statSync(resolvedPath);
+        } catch {
+          console.error(`Error: file not found: ${filePath}`);
+          process.exit(4);
+        }
         if (!stat.isFile()) {
           console.error(`Error: ${filePath} is not a file`);
           process.exit(4);
@@ -134,7 +140,13 @@ export function registerAttachmentCommands(program: Command): void {
         }
 
         // Step 2: PUT the file content to the signed URL
-        const fileContent = readFileSync(resolvedPath);
+        let fileContent: Buffer;
+        try {
+          fileContent = readFileSync(resolvedPath);
+        } catch {
+          console.error(`Error: could not read file: ${filePath}`);
+          process.exit(4);
+        }
         const headers: Record<string, string> = {
           "Content-Type": contentType,
           "Cache-Control": "public, max-age=31536000",

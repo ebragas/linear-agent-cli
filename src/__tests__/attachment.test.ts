@@ -422,5 +422,225 @@ describe("attachment commands", () => {
       expect(output.url).toBe(assetUrl);
       expect(output.projectId).toBe("Linear CLI");
     });
+
+    it("exits with error when neither --issue nor --project is provided", async () => {
+      const { registerAttachmentCommands } = await import(
+        "../commands/attachment.js"
+      );
+      const { Command } = await import("commander");
+
+      const testFilePath = join(testDir, "no-target.txt");
+      writeFileSync(testFilePath, "content");
+
+      const program = new Command();
+      program
+        .option("--agent <id>")
+        .option("--credentials-dir <path>")
+        .option("--format <format>");
+      registerAttachmentCommands(program);
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+        throw new Error(`process.exit(${code})`);
+      });
+      const errLogs: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errLogs.push(args.join(" "));
+
+      try {
+        await expect(
+          program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "attachment", "upload", testFilePath,
+          ])
+        ).rejects.toThrow("process.exit(4)");
+      } finally {
+        console.error = origErr;
+        exitSpy.mockRestore();
+      }
+
+      expect(mockFileUpload).not.toHaveBeenCalled();
+      expect(errLogs[0]).toContain("--issue or --project is required");
+    });
+
+    it("exits with error when file does not exist", async () => {
+      const { registerAttachmentCommands } = await import(
+        "../commands/attachment.js"
+      );
+      const { Command } = await import("commander");
+
+      const nonExistentPath = join(testDir, "does-not-exist.txt");
+
+      const program = new Command();
+      program
+        .option("--agent <id>")
+        .option("--credentials-dir <path>")
+        .option("--format <format>");
+      registerAttachmentCommands(program);
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+        throw new Error(`process.exit(${code})`);
+      });
+      const errLogs: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errLogs.push(args.join(" "));
+
+      try {
+        await expect(
+          program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "attachment", "upload", nonExistentPath,
+            "--issue", "MAIN-42",
+          ])
+        ).rejects.toThrow("process.exit(4)");
+      } finally {
+        console.error = origErr;
+        exitSpy.mockRestore();
+      }
+
+      expect(mockFileUpload).not.toHaveBeenCalled();
+      expect(errLogs[0]).toContain("file not found");
+    });
+
+    it("exits with error when path is a directory", async () => {
+      const { registerAttachmentCommands } = await import(
+        "../commands/attachment.js"
+      );
+      const { Command } = await import("commander");
+
+      const program = new Command();
+      program
+        .option("--agent <id>")
+        .option("--credentials-dir <path>")
+        .option("--format <format>");
+      registerAttachmentCommands(program);
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+        throw new Error(`process.exit(${code})`);
+      });
+      const errLogs: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errLogs.push(args.join(" "));
+
+      try {
+        await expect(
+          program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "attachment", "upload", testDir,
+            "--issue", "MAIN-42",
+          ])
+        ).rejects.toThrow("process.exit(4)");
+      } finally {
+        console.error = origErr;
+        exitSpy.mockRestore();
+      }
+
+      expect(mockFileUpload).not.toHaveBeenCalled();
+      expect(errLogs[0]).toContain("is not a file");
+    });
+
+    it("throws when S3 upload fails", async () => {
+      const { registerAttachmentCommands } = await import(
+        "../commands/attachment.js"
+      );
+      const { Command } = await import("commander");
+
+      const testFilePath = join(testDir, "s3-fail.txt");
+      writeFileSync(testFilePath, "content");
+
+      mockFileUpload.mockResolvedValueOnce({
+        success: true,
+        uploadFile: {
+          uploadUrl: "https://s3.amazonaws.com/upload",
+          assetUrl: "https://uploads.linear.app/asset-000/s3-fail.txt",
+          filename: "s3-fail.txt",
+          contentType: "text/plain",
+          size: 7,
+          headers: [],
+        },
+      });
+
+      const origFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      } as Response);
+
+      const program = new Command();
+      program
+        .option("--agent <id>")
+        .option("--credentials-dir <path>")
+        .option("--format <format>");
+      registerAttachmentCommands(program);
+
+      try {
+        await expect(
+          program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "attachment", "upload", testFilePath,
+            "--issue", "MAIN-42",
+          ])
+        ).rejects.toThrow("Upload failed: 500");
+      } finally {
+        global.fetch = origFetch;
+      }
+
+      expect(mockCreateAttachment).not.toHaveBeenCalled();
+    });
+
+    it("throws when Linear returns null uploadFile", async () => {
+      const { registerAttachmentCommands } = await import(
+        "../commands/attachment.js"
+      );
+      const { Command } = await import("commander");
+
+      const testFilePath = join(testDir, "null-upload.txt");
+      writeFileSync(testFilePath, "content");
+
+      mockFileUpload.mockResolvedValueOnce({
+        success: true,
+        uploadFile: null,
+      });
+
+      const origFetch = global.fetch;
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy;
+
+      const program = new Command();
+      program
+        .option("--agent <id>")
+        .option("--credentials-dir <path>")
+        .option("--format <format>");
+      registerAttachmentCommands(program);
+
+      try {
+        await expect(
+          program.parseAsync([
+            "node", "linear",
+            "--agent", "test-bot",
+            "--credentials-dir", testDir,
+            "--format", "json",
+            "attachment", "upload", testFilePath,
+            "--issue", "MAIN-42",
+          ])
+        ).rejects.toThrow("Failed to get upload URL from Linear");
+      } finally {
+        global.fetch = origFetch;
+      }
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 });
