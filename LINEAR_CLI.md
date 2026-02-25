@@ -312,6 +312,18 @@ linear team members <team>
 ### `project` — Project Queries
 
 ```
+linear project create
+  --name <text>                 Project name (required)
+  --team <team>                 Associate project with team by name or ID (required)
+  --description <text>          Set description (markdown)
+  --description-file <path>     Read description from file
+  --content <text>              Set long-form project overview content
+  --content-file <path>         Read long-form content from file
+  --start-date <date>           Start date (YYYY-MM-DD)
+  --target-date <date>          Target date (YYYY-MM-DD)
+  --lead <user>                 Project lead by name or email
+  --priority <0-4>              Priority (0=none, 1=urgent, 2=high, 3=normal, 4=low)
+
 linear project list       List projects
   --team <team>                 Filter by team
 

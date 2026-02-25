@@ -94,6 +94,7 @@ linear user me
 ```bash
 linear team list
 linear team members <team>
+linear project create --name <text> --team <team> [--description <text>] [--content <text>] [--start-date <date>] [--target-date <date>] [--lead <user>] [--priority <n>]
 linear project list [--team <team>]
 linear project get <id>
 linear state list [--team <team>]

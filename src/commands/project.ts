@@ -1,18 +1,25 @@
 import { Command } from "commander";
+import type { LinearClient } from "@linear/sdk";
 import { readFileSync } from "fs";
-import { LinearClient } from "@linear/sdk";
 import { runWithClient } from "../context.js";
 import { getFormat, printResult } from "../output.js";
 import { resolveUser } from "../resolvers.js";
-import { ValidationError } from "../errors.js";
 
-async function resolveTeam(client: LinearClient, team: string): Promise<string> {
+async function resolveTeamId(client: LinearClient, team: string): Promise<string> {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team)) {
     return team;
   }
-  const teams = await client.teams({ filter: { name: { eqIgnoreCase: team } } });
-  if (!teams.nodes[0]) throw new ValidationError(`No team matching "${team}"`);
-  return teams.nodes[0].id;
+
+  const teams = await client.teams({
+    filter: { name: { eqIgnoreCase: team } },
+  });
+  const match = teams.nodes[0];
+  if (!match) {
+    console.error(`Error: Team "${team}" not found`);
+    process.exit(4);
+  }
+
+  return match.id;
 }
 
 export function registerProjectCommands(program: Command): void {
@@ -24,33 +31,76 @@ export function registerProjectCommands(program: Command): void {
     .command("create")
     .description("Create a new project")
     .requiredOption("--name <text>", "Project name")
-    .requiredOption("--team <team>", "Team name or ID")
-    .option("--description <text>", "Project description")
-    .option("--start-date <date>", "Planned start date (YYYY-MM-DD)")
-    .option("--target-date <date>", "Planned target date (YYYY-MM-DD)")
+    .requiredOption("--team <team>", "Associate project with team (name or ID)")
+    .option("--description <text>", "Project description (markdown, 255-char limit)")
+    .option("--description-file <path>", "Read description from file")
+    .option("--content <text>", "Project overview content (long-form markdown)")
+    .option("--content-file <path>", "Read project overview content from file")
+    .option("--start-date <date>", "Start date (YYYY-MM-DD)")
+    .option("--target-date <date>", "Target date (YYYY-MM-DD)")
+    .option("--lead <user>", "Project lead (name or email)")
+    .option("--priority <n>", "Priority (0=none, 1=urgent, 2=high, 3=normal, 4=low)")
     .action(async (opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      await runWithClient(globalOpts, async (client) => {
-        const teamId = await resolveTeam(client, opts.team);
-
+      await runWithClient(globalOpts, async (client, { credentials }) => {
         const input: Record<string, unknown> = {
           name: opts.name,
-          teamIds: [teamId],
+          teamIds: [await resolveTeamId(client, opts.team)],
         };
-        if (opts.description) input.description = opts.description;
-        if (opts.startDate) input.startDate = opts.startDate;
-        if (opts.targetDate) input.targetDate = opts.targetDate;
 
-        const payload = await client.createProject(input as Parameters<typeof client.createProject>[0]);
+        if (opts.descriptionFile) {
+          input.description = readFileSync(opts.descriptionFile, "utf-8");
+        } else if (opts.description) {
+          input.description = opts.description;
+        }
+
+        if (opts.contentFile) {
+          input.content = readFileSync(opts.contentFile, "utf-8");
+        } else if (opts.content) {
+          input.content = opts.content;
+        }
+
+        if (opts.startDate) {
+          input.startDate = opts.startDate;
+        }
+
+        if (opts.targetDate) {
+          input.targetDate = opts.targetDate;
+        }
+
+        if (opts.lead) {
+          input.leadId = await resolveUser(opts.lead, credentials, client);
+        }
+
+        if (opts.priority !== undefined) {
+          const priority = parseInt(opts.priority, 10);
+          if (isNaN(priority) || priority < 0 || priority > 4) {
+            console.error(`Invalid value for --priority: "${opts.priority}". Expected an integer between 0 and 4.`);
+            process.exit(1);
+          }
+          input.priority = priority;
+        }
+
+        const payload = await client.createProject(input as {
+          name: string;
+          teamIds: string[];
+          description?: string;
+          content?: string;
+          startDate?: string;
+          targetDate?: string;
+          leadId?: string;
+          priority?: number;
+        });
         const created = await payload.project;
 
         const format = getFormat(globalOpts.format);
         printResult(
           {
             data: {
-              id: created?.id ?? payload.projectId,
+              id: created?.id ?? null,
               name: created?.name ?? opts.name,
               url: created?.url ?? null,
+              success: payload.success,
             },
           },
           format,
