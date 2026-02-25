@@ -100,11 +100,12 @@ linear project get <id>
 linear state list [--team <team>]
 ```
 
-### `attachment` — External URL Attachments
+### `attachment` — URL + Local File Attachments
 
 ```bash
 linear attachment add <issue-id> --url <url> [--title <text>]
 linear attachment list <issue-id>
+linear attachment upload <file-path> (--issue <id> | --project <id>) [--title <text>]
 linear attachment remove <attachment-id>
 ```
 

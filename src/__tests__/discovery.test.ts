@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { writeCredentials } from "../credentials.js";
@@ -20,6 +20,7 @@ const mockCreateAttachment = vi.fn();
 const mockIssue = vi.fn();
 const mockDeleteAttachment = vi.fn();
 const mockWorkflowStates = vi.fn();
+const mockFileUpload = vi.fn();
 
 vi.mock("@linear/sdk", () => ({
   LinearClient: vi.fn().mockImplementation(() => ({
@@ -33,6 +34,7 @@ vi.mock("@linear/sdk", () => ({
     issue: mockIssue,
     deleteAttachment: mockDeleteAttachment,
     workflowStates: mockWorkflowStates,
+    fileUpload: mockFileUpload,
   })),
 }));
 
@@ -88,6 +90,8 @@ describe("discovery commands", () => {
     mockIssue.mockReset();
     mockDeleteAttachment.mockReset();
     mockWorkflowStates.mockReset();
+    mockFileUpload.mockReset();
+    mockFetch.mockReset();
   });
 
   afterEach(() => {
@@ -419,6 +423,89 @@ describe("discovery commands", () => {
       const output = JSON.parse(logs[0]);
       expect(output.results).toHaveLength(2);
       expect(output.results[0].url).toBe("https://github.com/repo/pull/1");
+    });
+  });
+
+  describe("attachment upload", () => {
+    it("uploads a local file and creates issue attachment", async () => {
+      const localFile = join(testDir, "image.png");
+      writeFileSync(localFile, "file-content");
+
+      mockFileUpload.mockResolvedValue({
+        success: true,
+        uploadFile: {
+          uploadUrl: "https://uploads.linear.app/upload-1",
+          assetUrl: "https://assets.linear.app/file-1.png",
+          headers: [{ key: "x-test", value: "abc" }],
+        },
+      });
+      mockCreateAttachment.mockResolvedValue({
+        attachment: Promise.resolve({ id: "att-upload-1" }),
+      });
+      mockFetch.mockResolvedValue({ ok: true, status: 200 });
+
+      vi.resetModules();
+      const { registerAttachmentCommands } = await import("../commands/attachment.js");
+      const program = makeProgram();
+      registerAttachmentCommands(program);
+
+      const logs = await captureOutput(() =>
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "--format", "json",
+          "attachment", "upload", localFile,
+          "--issue", "MAIN-42",
+        ]),
+      );
+
+      expect(mockFileUpload).toHaveBeenCalledWith("image/png", "image.png", 12);
+      expect(mockFetch).toHaveBeenCalledWith("https://uploads.linear.app/upload-1", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "image/png",
+          "x-test": "abc",
+        },
+        body: Buffer.from("file-content"),
+      });
+      expect(mockCreateAttachment).toHaveBeenCalledWith({
+        issueId: "MAIN-42",
+        url: "https://assets.linear.app/file-1.png",
+        title: "image.png",
+      });
+
+      const output = JSON.parse(logs[0]);
+      expect(output.id).toBe("att-upload-1");
+      expect(output.issueId).toBe("MAIN-42");
+      expect(output.projectId).toBeNull();
+    });
+
+    it("fails when target is missing", async () => {
+      const localFile = join(testDir, "spec.pdf");
+      writeFileSync(localFile, "pdf");
+
+      vi.resetModules();
+      const { registerAttachmentCommands } = await import("../commands/attachment.js");
+      const program = makeProgram();
+      registerAttachmentCommands(program);
+
+      const errors: string[] = [];
+      const origError = console.error;
+      console.error = (...args: unknown[]) => errors.push(args.join(" "));
+
+      await expect(
+        program.parseAsync([
+          "node", "linear",
+          "--agent", "test-bot",
+          "--credentials-dir", testDir,
+          "attachment", "upload", localFile,
+        ]),
+      ).rejects.toThrow('process.exit unexpectedly called with "4"');
+
+      console.error = origError;
+      expect(errors[0]).toContain("exactly one of --issue or --project");
+      expect(mockFileUpload).not.toHaveBeenCalled();
     });
   });
 
