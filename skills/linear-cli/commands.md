@@ -95,4 +95,14 @@ linear state list --team Main --agent <id> --format json  # check valid state na
 linear attachment add MAIN-42 --url "https://github.com/org/repo/pull/12" --title "PR #12" --agent <id>
 linear attachment list MAIN-42 --agent <id> --format json
 linear attachment remove <attachment-id> --agent <id>
+
+# Upload a local file and attach it to an issue
+linear attachment upload ./screenshot.png --issue MAIN-42 --title "Screenshot" --agent <id>
+linear attachment upload ./spec.pdf --issue MAIN-42 --agent <id>  # title defaults to filename
+
+# Upload a local file for a project (returns assetUrl; no attachment record created)
+linear attachment upload ./spec.pdf --project "Linear CLI" --agent <id>
 ```
+
+Output for `--issue` upload: `{ id, url, title, issueId }`
+Output for `--project` upload: `{ url, title, projectId }`

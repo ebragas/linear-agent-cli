@@ -73,4 +73,4 @@ linear comment add MAIN-42 --body-file /tmp/body.md --agent <id>
 
 ## Command Reference
 
-See [commands.md](commands.md) for the full command reference: issue, comment, inbox, delegate, user/team/project discovery, and attachment commands.
+See [commands.md](commands.md) for the full command reference: issue, comment, inbox, delegate, user/team/project discovery, and attachment commands (add, list, remove, upload).
