@@ -22,6 +22,8 @@ linear issue create \
   --team Main \
   --description-file /tmp/desc.md \
   --agent <id>
+# Issues default to "Todo" state; override with --state
+linear issue create --title "Backlog item" --team Main --state "Backlog" --agent <id>
 
 # With relations (blocks/blocked-by use separate issueRelationCreate calls; partial failure exits 6)
 linear issue create --title "Subtask" --team Main --parent MAIN-42 --blocks MAIN-50 --agent <id>

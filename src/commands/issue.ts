@@ -330,7 +330,7 @@ export function registerIssueCommands(program: Command): void {
     .option("--description-file <path>", "Read description from file")
     .option("--assignee <user>", "Assign to user")
     .option("--delegate <agent>", "Delegate to agent")
-    .option("--state <state>", "Initial workflow state")
+    .option("--state <state>", "Initial workflow state (default: Todo)")
     .option("--label <label>", "Add label (repeatable)", collectArray, [])
     .option("--priority <priority>", "Priority level (0-4)")
     .option("--project <project>", "Add to project")
@@ -387,11 +387,11 @@ export function registerIssueCommands(program: Command): void {
           );
         }
 
-        // State
-        if (opts.state) {
+        // State (defaults to "Todo" when not specified)
+        {
           const team = await client.team(teamId);
           input.stateId = await resolveState(
-            opts.state,
+            opts.state ?? "Todo",
             team.key,
             client,
             agentId,
