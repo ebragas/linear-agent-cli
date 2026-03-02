@@ -55,6 +55,20 @@ const validCredentials: Credentials = {
   workspaceSlug: "test-workspace",
 };
 
+function mockTeamNode() {
+  return {
+    id: "team-1",
+    key: "MAIN",
+    states: vi.fn().mockResolvedValue({
+      nodes: [
+        { name: "Todo", id: "state-todo" },
+        { name: "In Progress", id: "state-ip" },
+        { name: "Done", id: "state-done" },
+      ],
+    }),
+  };
+}
+
 describe("issue commands", () => {
   let testDir: string;
   let origStdinIsTTY: boolean | undefined;
@@ -416,9 +430,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -460,6 +472,7 @@ describe("issue commands", () => {
           teamId: "team-1",
           description: "Issue body",
           priority: 2,
+          stateId: "state-todo",
         })
       );
 
@@ -475,9 +488,7 @@ describe("issue commands", () => {
       const descFile = join(testDir, "desc.md");
       writeFileSync(descFile, "# From file\nDescription content");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -524,9 +535,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -592,7 +601,7 @@ describe("issue commands", () => {
         const { registerIssueCommands } = await import("../commands/issue.js");
         const { Command } = await import("commander");
 
-        mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+        mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
         mockTeam.mockResolvedValue({ key: "MAIN" });
         mockCreateIssue.mockResolvedValue({
           issue: Promise.resolve({
@@ -1011,9 +1020,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -1072,9 +1079,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -1122,9 +1127,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({
-        nodes: [{ id: "team-1", key: "MAIN" }],
-      });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
 
       mockCreateIssue.mockResolvedValue({
@@ -1208,7 +1211,8 @@ describe("issue commands", () => {
       const { Command } = await import("commander");
       const { ValidationError } = await import("../errors.js");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
+      mockTeam.mockResolvedValue({ key: "MAIN" });
       mockProjects.mockResolvedValue({ nodes: [] });
       mockCreateIssue.mockResolvedValue({
         issue: Promise.resolve({
@@ -1244,7 +1248,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockCreateTemplate.mockResolvedValue({
         success: true,
         template: { id: "template-1", name: "Daily Standup" },
@@ -1296,7 +1300,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockCreateTemplate.mockResolvedValue({
         success: true,
         template: { id: "template-2", name: "Morning Check-in" },
@@ -1345,7 +1349,7 @@ describe("issue commands", () => {
         { id: "t-2", name: "Regular Template", type: "issue", templateData: "{}", team: Promise.resolve(null) },
         { id: "t-3", name: "Daily Report", type: "recurringIssue", templateData: "{}", team: Promise.resolve({ id: "team-1" }) },
       ]);
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
 
       const program = new Command();
       program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
@@ -1451,7 +1455,7 @@ describe("issue commands", () => {
       const { ValidationError } = await import("../errors.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
 
       const program = new Command();
       program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
@@ -1479,7 +1483,7 @@ describe("issue commands", () => {
       const { ValidationError } = await import("../errors.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
 
       const program = new Command();
       program.option("--agent <id>").option("--credentials-dir <path>").option("--format <format>");
@@ -1506,7 +1510,7 @@ describe("issue commands", () => {
       const { registerIssueCommands } = await import("../commands/issue.js");
       const { Command } = await import("commander");
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockUsers.mockResolvedValue({
         nodes: [{ id: "user-1", name: "Alice", email: "alice@example.com", displayName: "Alice" }],
       });
@@ -1561,7 +1565,7 @@ describe("issue commands", () => {
       };
       writeFileSync(join(testDir, "test-bot.cache.json"), JSON.stringify(cacheData));
 
-      mockTeams.mockResolvedValue({ nodes: [{ id: "team-1", key: "MAIN" }] });
+      mockTeams.mockResolvedValue({ nodes: [mockTeamNode()] });
       mockTeam.mockResolvedValue({ key: "MAIN" });
       mockCreateTemplate.mockResolvedValue({
         success: true,
