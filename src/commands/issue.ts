@@ -140,9 +140,9 @@ async function resolveProject(
 async function resolveTeam(
   client: LinearClient,
   team: string
-): Promise<string> {
+): Promise<{ id: string; key: string | null }> {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team)) {
-    return team;
+    return { id: team, key: null };
   }
   const teams = await client.teams({
     filter: { name: { eqIgnoreCase: team } },
@@ -150,7 +150,7 @@ async function resolveTeam(
   if (!teams.nodes[0]) {
     throw new ValidationError(`No team matching "${team}"`);
   }
-  return teams.nodes[0].id;
+  return { id: teams.nodes[0].id, key: teams.nodes[0].key };
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -346,7 +346,7 @@ export function registerIssueCommands(program: Command): void {
         const format = getFormat(globalOpts.format);
 
         // Resolve team
-        const teamId = await resolveTeam(client, opts.team);
+        const { id: teamId, key: teamKey } = await resolveTeam(client, opts.team);
 
         const input: Record<string, unknown> = {
           title: opts.title,
@@ -389,10 +389,10 @@ export function registerIssueCommands(program: Command): void {
 
         // State (defaults to "Todo" when not specified)
         {
-          const team = await client.team(teamId);
+          const key = teamKey ?? (await client.team(teamId)).key;
           input.stateId = await resolveState(
             opts.state ?? "Todo",
-            team.key,
+            key,
             client,
             agentId,
             credentialsDir
@@ -687,7 +687,7 @@ export function registerIssueCommands(program: Command): void {
 
         const searchOpts: Record<string, unknown> = {};
         if (opts.team) {
-          searchOpts.teamId = await resolveTeam(client, opts.team);
+          searchOpts.teamId = (await resolveTeam(client, opts.team)).id;
         }
         if (opts.includeComments) {
           searchOpts.includeComments = true;
@@ -790,7 +790,7 @@ export function registerIssueCommands(program: Command): void {
           );
         }
 
-        const teamId = await resolveTeam(client, opts.team);
+        const { id: teamId, key: teamKey } = await resolveTeam(client, opts.team);
 
         const interval = parseInt(opts.interval, 10);
         if (isNaN(interval) || interval < 1) {
@@ -822,10 +822,10 @@ export function registerIssueCommands(program: Command): void {
         }
 
         if (opts.state) {
-          const team = await client.team(teamId);
+          const key = teamKey ?? (await client.team(teamId)).key;
           templateData.stateId = await resolveState(
             opts.state,
-            team.key,
+            key,
             client,
             agentId,
             credentialsDir
@@ -858,7 +858,7 @@ export function registerIssueCommands(program: Command): void {
       await runWithClient(globalOpts, async (client) => {
         const format = getFormat(globalOpts.format);
 
-        const teamId = opts.team ? await resolveTeam(client, opts.team) : null;
+        const teamId = opts.team ? (await resolveTeam(client, opts.team)).id : null;
         const allTemplates = await client.templates;
 
         type RecurringTemplate = {
