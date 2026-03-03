@@ -27,6 +27,8 @@ linear issue create --title "Backlog item" --team Main --state "Backlog" --agent
 
 # With relations (blocks/blocked-by use separate issueRelationCreate calls; partial failure exits 6)
 linear issue create --title "Subtask" --team Main --parent MAIN-42 --blocks MAIN-50 --agent <id>
+linear issue create --title "Blocked task" --team Main --blocked-by MAIN-42 --agent <id>
+linear issue create --title "Related task" --team Main --related-to MAIN-42 --agent <id>
 
 # State: use `transition` (shortcut, resolves state name by team automatically)
 # `update --state` also works but is less convenient
@@ -39,6 +41,12 @@ linear issue transition MAIN-42 "Done" --agent <id>
 linear issue update MAIN-42 --assignee me --agent <id>
 linear issue update MAIN-42 --assignee "Eric Bragas" --agent <id>
 linear issue update MAIN-42 --delegate null --agent <id>   # pass "null" to clear nullable fields
+
+# Relationships (repeatable; uses issueRelationCreate; partial failure exits 6)
+linear issue update MAIN-42 --blocks MAIN-50 --agent <id>
+linear issue update MAIN-42 --blocked-by MAIN-40 --agent <id>
+linear issue update MAIN-42 --related-to MAIN-45 --agent <id>
+linear issue update MAIN-42 --blocks MAIN-50 --blocked-by MAIN-40 --agent <id>  # combine multiple
 
 linear issue search "authentication timeout" --agent <id> --format json
 linear issue archive MAIN-42 --agent <id>
